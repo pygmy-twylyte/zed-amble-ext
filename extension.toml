@@ -1,0 +1,11 @@
+id = "amble"
+name = "Amble"
+version = "0.0.1"
+schema_version = 1
+authors = ["David Brown <djvbmd@protonmail.com>"]
+description = "Extension to support the Amble game engine DSL."
+repository = "https://github.com/pygmy-twylyte/zed-amble-ext.git"
+
+[grammars.amble]
+repository = "https://github.com/pygmy-twylyte/tree-sitter-amble.git"
+rev = "b2f5e51b3aef32ce4e2fdf6336fa2cfc3ae45b58"
