@@ -11,7 +11,7 @@ room bathroom {
         text "bar"
     }
 
-    overlay if (flag unset foo, flag set bar-none) {
+    overlay if (flag unset foo, flag complete bar-none) {
         text "baz"
     }
 }
