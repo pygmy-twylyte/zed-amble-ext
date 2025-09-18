@@ -8,4 +8,4 @@ repository = "https://github.com/pygmy-twylyte/zed-amble-ext.git"
 
 [grammars.amble]
 repository = "https://github.com/pygmy-twylyte/tree-sitter-amble.git"
-rev = "b2f5e51b3aef32ce4e2fdf6336fa2cfc3ae45b58"
+rev = "85e9f08093304d109b0c081dd4ce24de0bccaa2b"
