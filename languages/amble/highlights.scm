@@ -21,3 +21,6 @@
 (npc_state_builtin) @constant
 (npc_state_custom "custom" @constant custom_state: (string) @string.special)
 (ovl_item_in_room ["item" "in" "room"] @function item_id: (identifier) @label room_id: (identifier) @label)
+(ovl_flag_binary ["overlay" "if" "flag"] @function flag_id: (identifier) @label)
+(flag_binary_block "set" @variant set_text: (string) @string)
+(flag_binary_block "unset" @variant unset_text: (string) @string)
