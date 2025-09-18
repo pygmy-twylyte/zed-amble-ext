@@ -7,6 +7,7 @@
 (room_visited "visited" @keyword visited: (room_visited) @boolean)
 
 (room_exit "exit" @keyword dir: (exit_dir) @variant "->" @punctuation.special dest: (exit_dest) @label)
+(exit_stmt ["hidden" "locked"] @keyword)
 (required_items_stmt "required_items" @function item_id: (identifier) @label)
 (required_flags_stmt "required_flags" @function flag_id: (identifier) @label)
 (barred_stmt "barred" @keyword msg: (barred_msg) @string)
@@ -21,6 +22,11 @@
 (npc_state_builtin) @constant
 (npc_state_custom "custom" @constant custom_state: (string) @string.special)
 (ovl_item_in_room ["item" "in" "room"] @function item_id: (identifier) @label room_id: (identifier) @label)
-(ovl_flag_binary ["overlay" "if" "flag"] @function flag_id: (identifier) @label)
+(ovl_flag_binary ["overlay" "if" "flag"] @function flag_name: (identifier) @label)
 (flag_binary_block "set" @variant set_text: (string) @string)
 (flag_binary_block "unset" @variant unset_text: (string) @string)
+(ovl_presence_pair ["overlay" "if" "item" "npc"] @function (identifier) @label)
+(presence_pair_block ["present" "absent"] @variant (string) @string)
+(ovl_npc_state_set ["overlay" "if" "npc"] @function npc_id: (identifier) @label "here" @function)
+(npc_state_set_line text: (string) @string)
+(npc_state_set_custom "custom" @constant state: (identifier) @string.special)

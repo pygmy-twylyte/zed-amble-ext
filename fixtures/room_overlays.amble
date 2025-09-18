@@ -5,7 +5,7 @@ room bathroom {
     name "Bathroom"
     desc "A small private bathroom."
     visited true
-    exit out -> bedroom
+    exit out -> bedroom { hidden locked required_flags(toilet-flushed) }
 
     overlay if flag complete foo {
         text "bar"
