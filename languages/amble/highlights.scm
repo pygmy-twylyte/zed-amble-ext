@@ -3,7 +3,7 @@
 (room_def "room" @keyword)
 (room_def id: (room_id) @label)
 (room_name "name" @keyword name: (room_name) @string)
-(room_desc "desc" @keyword desc: (room_desc) @string)
+(room_desc ["desc" "description"] @keyword desc: (room_desc) @string)
 (room_visited "visited" @keyword visited: (room_visited) @boolean)
 
 (room_exit "exit" @keyword dir: (exit_dir) @variant "->" @punctuation.special dest: (exit_dest) @label)
@@ -13,5 +13,11 @@
 
 (overlay_stmt "overlay" @keyword "if" @keyword)
 (ovl_text_stmt "text" @keyword text: (ovl_text) @string)
-(ovl_flag_set "flag" @function "set" @function flag: (flag_name) @label)
-(ovl_flag_unset "flag" @function "unset" @function flag: (flag_name) @label)
+(ovl_flag_status ["flag" "set" "unset" "complete"] @function flag_name: (identifier) @label)
+(ovl_item_presence ["item" "present" "absent"] @function item_id: (identifier) @label)
+(ovl_item_posession ["player" "has" "missing" "item"] @function item_id: (identifier) @label)
+(ovl_npc_presence ["npc" "present" "absent"] @function npc_id: (identifier) @label)
+(ovl_npc_state ["npc" "in" "state"] @function npc_id: (identifier) @label )
+(npc_state_builtin) @constant
+(npc_state_custom "custom" @constant custom_state: (string) @string.special)
+(ovl_item_in_room ["item" "in" "room"] @function item_id: (identifier) @label room_id: (identifier) @label)
