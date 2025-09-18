@@ -1,0 +1,17 @@
+# ====================================
+# Basic Room with Overlays
+# ====================================
+room bathroom {
+    name "Bathroom"
+    desc "A small private bathroom."
+    visited true
+    exit out -> bedroom
+
+    overlay if flag set foo-schnitzel {
+        text "bar"
+    }
+
+    overlay if (flag unset foo, flag set bar-none) {
+        text "baz"
+    }
+}

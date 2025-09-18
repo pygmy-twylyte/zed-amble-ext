@@ -1,0 +1,11 @@
+#
+# Basic Room -- Simplest Possible Room Definition
+#
+
+room room-id {
+  name "Room Name"
+  desc "The room is bare."
+  visited false
+  exit way_to -> another-room
+  exit "dir with whitespace" -> yet-another-room
+}
