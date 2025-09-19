@@ -1,0 +1,43 @@
+trigger "Test Trigger" when always {
+    if has flag some-flag {
+        do show "Show this."
+        if has flag another-flag {
+            do show "Show this too."
+        }
+    }
+}
+
+trigger "Main-Lobby: Security Reminder" only once
+when enter room main-lobby
+{
+    do schedule in 3 if player in room main-lobby onFalse cancel
+    note "lobby loitering reminder" {
+        do show """A chime echoes through the lobby. "Candidates: Please do not loiter in the lobby," intones an overhead voice."""
+        do award points -1
+    }
+}
+
+trigger "Lounge: Brew Coffee" only once
+when use item coffee_machine ability turnOn
+{
+    do show "The coffee machine hums to life and begins its brewing cycle. A timer shows 3 minutes remaining..."
+    do set item description coffee_machine "A single serve drip coffee machine, which apparently takes quite a while to finish brewing a cup one drip at a time..."
+    do schedule in 3 note "coffee done brewing" {
+        do set item description coffee_machine "A single serve, drip coffee maker. The brew cycle is complete and the grounds have already been used."
+        do show "♪ BEEP BEEP BEEP! ♪ The coffee machine chimes cheerfully. The rich aroma of freshly brewed coffee fills the air."
+        do spawn item hot_coffee into room lounge
+        do add flag coffee-brewed
+        do award points 2
+    }
+}
+
+trigger "More Complicated Trigger"
+when enter room test_room {
+    if all(chance 50%, has flag lucky) { do show "something" }
+    do show "Something else"
+    do schedule in 5 if missing item big-stick note "stick reminder" {
+        if any(has flag went-home, all(has flag some-flag, with npc fred-flintsone)) {
+            do award points -32
+        }
+    }
+}
