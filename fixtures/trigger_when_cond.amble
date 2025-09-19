@@ -1,0 +1,32 @@
+# ========================================
+# Trigger When Conditions: All
+# ========================================
+
+trigger "Highlight Test" only once
+when always
+{ do show "some text" }
+
+trigger "Highlight Test" when
+enter room some-room-id { do show "some text" }
+
+trigger "Highlight Test" only once when take item some_item_id {
+    do show "some text"
+}
+
+trigger "Highlight Test" when talk to npc some_npc_id { do show "some text" }
+trigger "Highlight Test" only once
+when open item some_item_id
+{
+    do show "some text"
+}
+
+trigger "Highlight Test" when leave room some-room-id { do show "some text" }
+trigger "Highlight Test" only once when look at item some_item_id { do show "some text" }
+trigger "Highlight Test" when use item some_item_id ability someAbility { do show "some text" }
+trigger "Highlight Test" only once when give item some_item_id to npc some_npc_id { do show "some text" }
+trigger "Highlight Test" when use item some_tool on item some_target interaction someInteraction { do show "some text" }
+trigger "Highlight Test" only once when act action_type on item some_item_id  { do show "some text" }
+trigger "Highlight Test" when take item some_item_id from npc some_npc_id { do show "some text" }
+trigger "Highlight Test" only once when insert item some_item_id into item some_vessel_id { do show "some text" }
+trigger "Highlight Test" when drop item some_item_id { do show "some text" }
+trigger "Highlight Test" only once when unlock item some_item_id { do show "some text" }
