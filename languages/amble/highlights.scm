@@ -78,3 +78,23 @@
 (insert_item_into ["insert" "item" "into"] @type
     item_id: (_) @label
 )
+
+; trigger IF conditions
+(cond_block "if" @keyword)
+(cond_any_group "any" @function)
+(cond_all_group "all" @function)
+(cond_has_flag ["has" "flag"] @function.builtin flag_name: (_) @label)
+(cond_missing_flag ["missing" "flag"] @function.builtin flag_name: (_) @label)
+(cond_has_item ["has" "item"] @function.builtin item_id: (_) @label)
+(cond_missing_item ["missing" "item"] @function.builtin item_id: (_) @label)
+(cond_visited_room ["has" "visited" "room"] @function.builtin room_id: (_) @label)
+(cond_flag_in_progress ["flag" "in" "progress"] @function.builtin flag_name: (_) @label)
+(cond_flag_complete ["flag" "complete"] @function.builtin flag_name: (_) @label)
+(cond_with_npc ["with" "npc"] @function.builtin npc_id: (_) @label)
+(cond_npc_has_item ["npc" "has" "item"] @function.builtin npc_id: (_) @label item_id: (_) @label)
+(cond_npc_in_state ["npc" "in" "state"] @function.builtin npc_id: (_) @label state: (_) @variable.special)
+(cond_player_in_room ["player" "in" "room"] @function.builtin room_id: (_) @label)
+(cond_container_has_item ["container" "has" "item"] @function.builtin item_id:(_) @label)
+(cond_chance ["chance" "%"] @function.builtin pct: (_) @number)
+(cond_ambient ["ambient"] @function.builtin spinner: (_) @variant (identifier) @label)
+(cond_in_rooms ["in" "rooms"] @function.builtin (identifier) @label )
