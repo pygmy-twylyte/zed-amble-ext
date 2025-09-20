@@ -1,5 +1,6 @@
 ; Highlights file for Amble DSL
 (comment) @comment
+(number) @number
 
 ; ROOMS Highlights
 ; Basic / Required Elements
@@ -42,7 +43,7 @@
 (trigger_def name: (string) @string)
 (trigger_def once: (only_once_kw) @property)
 
-; when conditions (events)
+; when conditions (triggering events)
 (when_cond) @keyword
 (always_event) @type
 (enter_room ["enter" "room"] @type room_id: (_) @label)
@@ -98,3 +99,85 @@
 (cond_chance ["chance" "%"] @function.builtin pct: (_) @number)
 (cond_ambient ["ambient"] @function.builtin spinner: (_) @variant (identifier) @label)
 (cond_in_rooms ["in" "rooms"] @function.builtin (identifier) @label )
+
+; trigger "DO" actions
+(do_action "do" @keyword)
+(action_show "show" @function text: (_) @string)
+(action_add_wedge ["add" "wedge" "width" "spinner"] @function
+    text: (string) @string
+    spinner: (identifier) @variable.special)
+(action_add_seq ["add" "seq" "flag" "limit"] @function
+    flag: (_) @label)
+(action_replace_item ["replace" "item" "with"] @function
+    item_id: (_) @label)
+(action_replace_drop_item ["replace" "drop" "item" "with"] @function
+    item_id: (_) @label)
+(action_add_flag ["add" "flag"] @function
+    flag: (_) @label)
+(action_reset_flag ["reset" "flag"] @function
+    flag: (_) @label)
+(action_advance_flag ["advance" "flag"] @function
+    flag: (_) @label)
+(action_remove_flag ["remove" "flag"] @function
+    flag: (_) @label)
+(spawn_action_stem ["spawn" "item"] @function
+    item_id: (_) @label)
+(action_spawn_room ["into" "room"] @function
+    room: (_) @label)
+(action_spawn_container ["into" "in" "container"] @function
+    container_id: (_) @label)
+(action_spawn_inventory ["in" "inventory"] @function )
+(action_spawn_current_room ["in" "current" "room"] @function)
+(action_despawn_item ["despawn" "item"] @function
+    item_id: (_) @label)
+(action_award_points ["award" "points"] @function)
+(action_lock_item ["lock" "item"] @function
+    item_id: (_) @label)
+(action_unlock_item ["unlock" "item"] @function
+    item_id: (_) @label)
+(action_lock_exit ["lock" "exit" "from" "direction"] @function
+    room_id: (_) @label
+    direction: (_) @variant)
+(action_unlock_exit ["unlock" "exit" "from" "direction"] @function
+    room_id: (_) @label
+    direction: (_) @variant)
+(action_reveal_exit ["reveal" "exit" "from" "to" "direction"] @function
+    from_room: (_) @label
+    to_room: (_) @label
+    direction: (_) @variant)
+(action_push_player ["push" "player" "to"] @function
+    room_id: (_) @label)
+(action_set_item_desc ["set" "item" "description"] @function
+    item_id: (_) @label
+    text: (_) @string)
+(action_npc_random_dialogue ["npc" "random" "dialogue"] @function
+    npc_id: (_) @label)
+(action_npc_says ["npc" "says"] @function
+    npc_id: (_) @label
+    text: (_) @string)
+(action_npc_refuse_item ["npc" "refuse" "item"] @function
+    npc_id: (_) @label
+    reason: (_) @string)
+(action_set_npc_state ["set" "npc" "state"] @function
+    npc_id: (_) @label
+    state: (_) @variable.special)
+(action_deny_read ["deny" "read"] @function
+    reason: (_) @string)
+(action_restrict_item ["restrict" "item"] @function
+    item_id: (_) @label)
+(action_give_to_player ["give""item""to""player""from""npc"] @function
+    item_id: (_) @label
+    npc_id: (_) @label)
+(action_set_barred_msg ["set""barred""message""from""to"] @function
+    room_id: (_) @label
+    msg: (_) @string)
+(container_state) @variant
+(action_set_container_state ["set" "container" "state"] @function
+    item_id: (_) @label)
+(action_spinner_msg ["spinner" "message"] @function
+    spinner: (_) @variable.special)
+(retry_type "onFalse" @function
+    policy: (_) @variant)
+(action_schedule_in_or_on ["schedule""in""on"] @function)
+(action_schedule_in_if ["schedule""in""on""if"] @function)
+(schedule_note) @comment
