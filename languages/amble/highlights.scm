@@ -1,6 +1,7 @@
 ; Highlights file for Amble DSL
 (comment) @comment
 (number) @number
+(boolean) @boolean
 
 (room_id) @constructor
 (exit_dest) @constructor
@@ -19,6 +20,7 @@
 (item_interaction) @constant.builtin
 (retry_policy) @variant
 (schedule_note) @comment
+(item_location) @attribute
 
 
 ; ROOMS Highlights
@@ -137,3 +139,14 @@
 (retry_type "onFalse" @function)
 (action_schedule_in_or_on ["schedule""in""on"] @function)
 (action_schedule_in_if ["schedule""in""on""if"] @function)
+
+; ITEMS Highlights
+(item_def "item" @keyword)
+(item_name_stmt "name" @keyword)
+(item_desc_stmt ["desc" "description"] @keyword)
+(item_portable_stmt "portable" @keyword)
+(item_loc_stmt "location" @keyword)
+(item_text_stmt "text" @keyword)
+(item_ability_stmt "ability" @keyword)
+(item_requires_stmt ["requires" "to"] @keyword)
+(item_container_stmt ["container" "state"] @keyword)
