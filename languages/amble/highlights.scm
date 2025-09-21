@@ -5,6 +5,7 @@
 
 
 (room_id) @constructor
+(goal_id) @emphasis
 (exit_dest) @constructor
 (exit_dir) @property
 (item_id) @label
@@ -166,6 +167,20 @@
 (active_stmt "active" @keyword)
 
 ; SPINNERS Hightlights
-
+(spinner_def "spinner" @keyword)
+(spinner_stmt ["wedge" "width"] @property)
 
 ; GOALS Highlights
+(goal_def "goal" @keyword)
+(goal_name_stmt "name" @property)
+(goal_desc_stmt "desc" @property)
+(goal_group_stmt "group" @property)
+(goal_start_stmt ["start" "when"] @property)
+(goal_done_stmt ["done" "when"] @property)
+(gc_has_item ["has""item"] @function)
+(gc_has_flag ["has" "flag"] @function)
+(gc_flag_progress ["flag" "in" "progress"] @function)
+(gc_goal_complete ["goal" "complete"] @function)
+(gc_flag_complete ["flag" "complete"] @function)
+(gc_reached_room ["reached" "room"] @function)
+(gc_missing_flag ["flag" "missing"] @function)
