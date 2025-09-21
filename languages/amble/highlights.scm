@@ -3,6 +3,7 @@
 (number) @number
 (boolean) @boolean
 
+
 (room_id) @constructor
 (exit_dest) @constructor
 (exit_dir) @property
@@ -19,7 +20,8 @@
 (item_ability) @constant
 (item_interaction) @constant.builtin
 (retry_policy) @variant
-(schedule_note) @comment
+(schedule_note) @hint
+(dev_note) @hint
 (item_location) @attribute
 
 
@@ -150,3 +152,14 @@
 (item_ability_stmt "ability" @keyword)
 (item_requires_stmt ["requires" "to"] @keyword)
 (item_container_stmt ["container" "state"] @keyword)
+
+; NPCS Highlights
+(npc_def "npc" @keyword)
+(npc_name_stmt "name" @keyword)
+(npc_desc_stmt ["desc" "description"] @keyword)
+(npc_loc_stmt "location" @keyword (npc_location ["room" "nowhere"] @variant))
+(npc_state_stmt "state" @keyword)
+(npc_dialogue_block "dialogue" @keyword (npc_dialogue) @string)
+(npc_movement_stmt "movement" @keyword)
+(timing_stmt "timing" @keyword)
+(active_stmt "active" @keyword)
