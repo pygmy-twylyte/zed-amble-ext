@@ -14,6 +14,7 @@
 (entity_name) @title
 (entity_desc) @string
 (ovl_text) @string
+(spinner_text) @string
 (player_message) @string.special
 (npc_state) @variable
 (custom_state) @variable.special
@@ -163,3 +164,8 @@
 (npc_movement_stmt "movement" @keyword)
 (timing_stmt "timing" @keyword)
 (active_stmt "active" @keyword)
+
+; SPINNERS Hightlights
+
+
+; GOALS Highlights
