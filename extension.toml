@@ -1,6 +1,6 @@
 id = "amble"
 name = "Amble"
-version = "0.4.2"
+version = "0.5.0"
 schema_version = 1
 authors = ["David Brown <djvbmd@protonmail.com>"]
 description = "Extension to support the Amble game engine DSL."
