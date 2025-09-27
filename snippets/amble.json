@@ -1,0 +1,68 @@
+{
+  "room": {
+    "prefix": ["newroom"],
+    "description": "Amble DSL: room block",
+    "body": [
+      "room ${1:room-id} {",
+      "    name \"${2:Room Name}\"",
+      "    desc \"${3:Room Description}\"",
+      "    $0",
+      "}"
+    ]
+  },
+  "item": {
+    "prefix": ["newitem"],
+    "description": "Amble DSL: item block",
+    "body": [
+      "item ${1:item_id} {",
+      "    name \"${2:Item Name}\"",
+      "    desc \"${3:Item description...}\"",
+      "    location ${4:nowhere/room/chest/npc} ${5:entity_id or spawn note}",
+      "    $0",
+      "}"
+    ]
+  },
+  "npc": {
+    "prefix": ["newnpc"],
+    "description": "Amble DSL: npc block",
+    "body": [
+      "npc ${1:npc_id} {",
+      "    name \"${2:NPC Name}\"",
+      "    desc \"${3:Npc description...}\"",
+      "    location ${4:nowhere/room} ${5:room_id/spawn note}",
+      "}"
+    ]
+  },
+  "goal": {
+    "prefix": ["newgoal"],
+    "description": "Amble DSL: goal block",
+    "body": [
+      "goal ${1:goal-id} {",
+      "    name \"${2:Goal Name}\"",
+      "    desc \"${3:Description of what's required...}\"",
+      "    group ${4:required/optional/status-effect}",
+      "    $0",
+      "}"
+    ]
+  },
+  "trigger": {
+    "prefix": ["newtrigger"],
+    "description": "Amble DSL: trigger block (name + when ...)",
+    "body": ["trigger \"${1:Trigger Name}\" when ${2:condition} {", "  $0", "}"]
+  },
+  "spinner": {
+    "prefix": ["newspinner"],
+    "description": "Amble DSL: spinner definition block",
+    "body": ["spinner ${1:spinner-name} {", "  $0", "}"]
+  },
+  "section_divider": {
+    "prefix": ["sect", "section", "divider"],
+    "description": "Commented section divider with equals lines",
+    "body": [
+      "# ========================================",
+      "# ${1:Section Title}",
+      "# ========================================",
+      "$0"
+    ]
+  }
+}
