@@ -132,6 +132,7 @@
 (action_npc_random_dialogue ["npc" "random" "dialogue"] @function)
 (action_npc_says ["npc" "says"] @function)
 (action_npc_refuse_item ["npc" "refuse" "item"] @function)
+(action_set_npc_active ["set" "npc" "active"] @function)
 (action_set_npc_state ["set" "npc" "state"] @function)
 (action_deny_read ["deny" "read"] @function)
 (action_restrict_item ["restrict" "item"] @function)
@@ -154,6 +155,12 @@
 (item_ability_stmt "ability" @keyword)
 (item_requires_stmt ["requires" "to"] @keyword)
 (item_container_stmt ["container" "state"] @keyword)
+(item_restricted_stmt ["restricted"] @keyword)
+(item_consumable_stmt ["consumable"] @keyword)
+(consumable_uses "uses_left" @keyword)
+(consumable_consume_on ["consume_on" "ability"] @keyword)
+(consumable_when_consumed "when_consumed" @keyword)
+(when_consumed_opt ["despawn" "replace" "inventory" "current" "room"] @variant)
 
 ; NPCS Highlights
 (npc_def "npc" @keyword)
@@ -162,9 +169,10 @@
 (npc_loc_stmt "location" @keyword (npc_location ["room" "nowhere"] @variant))
 (npc_state_stmt "state" @keyword)
 (npc_dialogue_block "dialogue" @keyword (npc_dialogue) @string)
-(npc_movement_stmt "movement" @keyword)
+(npc_movement_stmt "movement" @keyword (movement_type) @embedded)
 (timing_stmt "timing" @keyword)
 (active_stmt "active" @keyword)
+(loop_stmt "loop" @keyword)
 
 ; SPINNERS Hightlights
 (spinner_def "spinner" @keyword)
@@ -177,6 +185,7 @@
 (goal_group_stmt "group" @property)
 (goal_start_stmt ["start" "when"] @property)
 (goal_done_stmt ["done" "when"] @property)
+(goal_fail_stmt ["fail" "when"] @property)
 (gc_has_item ["has""item"] @function)
 (gc_has_flag ["has" "flag"] @function)
 (gc_flag_progress ["flag" "in" "progress"] @function)
