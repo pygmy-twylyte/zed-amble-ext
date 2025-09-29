@@ -16,7 +16,7 @@
 @item)
 
 ((spinner_def
-    (spinner) @name)
+    (spinner_id) @name)
 @item)
 
 ((trigger_def

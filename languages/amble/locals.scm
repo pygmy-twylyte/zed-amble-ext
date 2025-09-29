@@ -1,0 +1,12 @@
+(room_def room_id: (room_id) @local.definition)
+(item_def item_id: (item_id) @local.definition)
+(npc_def   npc_id: (npc_id)  @local.definition)
+(goal_def goal_id: (goal_id)  @local.definition)
+(spinner_def name: (spinner_id) @local.definition)
+
+(_room_ref    (room_id)    @local.reference)
+(_item_ref    (item_id)    @local.reference)
+(_npc_ref     (npc_id)     @local.reference)
+(_flag_ref    (flag_name)  @local.reference)
+(_goal_ref    (goal_id)    @local.reference)
+(_spinner_ref (spinner_id) @local.reference)

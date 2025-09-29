@@ -27,15 +27,10 @@
 "{" @indent
 
 ; Closing braces decrease indentation
-"}" @dedent
+"}" @end
 
 ; Opening parentheses increase indentation
 "(" @indent
 
 ; Closing parentheses decrease indentation
-")" @dedent
-
-; Conditional structures
-(cond_block
-  (_) @branch
-  (_) @indent)
+")" @end

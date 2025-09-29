@@ -3,6 +3,7 @@ grammar = "amble"
 path_suffixes = ["amble"]
 line_comments = ["# "]
 autoclose_before = ";:.,=}])>"
+tab_size = 4
 brackets = [
     { start = "{", end = "}", close = true, newline = true },
     { start = "[", end = "]", close = true, newline = true },

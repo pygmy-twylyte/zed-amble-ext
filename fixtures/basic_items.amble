@@ -1,43 +1,42 @@
 item no_cake {
-  name "No Cake"
-  desc "You carry an uneasy feeling where a dessert might be. It is the absence of cake, and somehow you know you’ve always had it."
-  portable true
-  location inventory player
+    name "No Cake"
+    desc "You carry an uneasy feeling where a dessert might be. It is the absence of cake, and somehow you know you’ve always had it."
+    portable true
+    location inventory player
 }
 
 item invitation {
-  name "Engraved Invitation"
-  desc "A standard letter-size slab of asbestos with ornate and official-looking lettering burned into it. It remains too hot to touch."
-  portable true
-  location nowhere "spawns@aperture-lab"
-  text """Candidate #2112-42:
-You are cordially invited to complete your evaluation and induction. Please present this invitation at the Amble Adventures office immediately upon arrival."""
-  ability Read
+    name "Engraved Invitation"
+    desc "A standard letter-size slab of asbestos with ornate and official-looking lettering burned into it. It remains too hot to touch."
+    portable true
+    location nowhere "spawns@aperture-lab"
+    text "Candidate #2112-42:\nYou are cordially invited to complete your evaluation and induction. Please present this invitation at the Amble Adventures office immediately upon arrival."
+    ability Read
 }
 
 item lebowski_rug {
-  name "Ornate Rug"
-  desc "It really ties the room together, man."
-  portable true
-  location room lounge
+    name "Ornate Rug"
+    desc "It really ties the room together, man."
+    portable true
+    location room lounge
 }
 
 item portal_gun {
-  name "Portal Gun"
-  desc "A black and white Portal gun affixed to a stand and aimed at a target on the wall. There's a power switch and a door to a battery compartment."
-  portable false
-  location room portal-room
-  container state closed
-  ability TurnOn
+    name "Portal Gun"
+    desc "A black and white Portal gun affixed to a stand and aimed at a target on the wall. There's a power switch and a door to a battery compartment."
+    portable false
+    location room portal-room
+    container state closed
+    ability TurnOn
 }
 
 item road_sign {
-  name "Welcome Sign"
-  desc "A 10-foot tall sign, spotlit from below by a fusion powered sodium lamp. The sign is tilted upward, as if meant to be read from the air as well as the ground."
-  portable false
-  location room inca-road
-  text """                            AMBLE ADVENTURES
-                           (Inca Road Branch)
-                 * a division of Brains Anonymous, LLC"""
-  ability Read
+    name "Welcome Sign"
+    desc "A 10-foot tall sign, spotlit from below by a fusion powered sodium lamp. The sign is tilted upward, as if meant to be read from the air as well as the ground."
+    portable false
+    location room inca-road
+    text """                            AMBLE ADVENTURES
+                            (Inca Road Branch)
+                    * a division of Brains Anonymous, LLC"""
+    ability Read
 }

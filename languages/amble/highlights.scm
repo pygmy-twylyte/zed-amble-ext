@@ -6,12 +6,11 @@
 
 (room_id) @constructor
 (goal_id) @emphasis
-(exit_dest) @constructor
 (exit_dir) @property
 (item_id) @label
 (npc_id) @type
 (flag_name) @enum
-(spinner) @variant
+(spinner_id) @variant
 (entity_name) @title
 (entity_desc) @string
 (ovl_text) @string
@@ -22,17 +21,17 @@
 (item_ability) @constant
 (item_interaction) @constant.builtin
 (retry_policy) @variant
-(schedule_note) @hint
-(dev_note) @hint
+(schedule_note) @comment
+(dev_note) @comment
 (item_location) @attribute
 
 
 ; ROOMS Highlights
 ; Basic / Required Elements
 (room_def "room" @keyword)
-(room_name "name" @keyword)
-(room_desc ["desc" "description"] @keyword)
-(room_visited "visited" @keyword visited: (room_visited) @boolean)
+(room_name "name" @property)
+(room_desc ["desc" "description"] @property)
+(room_visited "visited" @property visited: (room_visited) @boolean)
 
 ; Exits +/= conditional blocks
 (room_exit "exit" @keyword "->" @punctuation.special)
