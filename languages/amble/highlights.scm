@@ -24,6 +24,7 @@
 (ovl_text) @string
 (exit_dir) @string.special
 (player_message) @string
+(quote) @string
 
 ; Comments / notes
 (comment) @comment
