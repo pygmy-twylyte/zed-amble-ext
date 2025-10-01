@@ -24,7 +24,11 @@
 (ovl_text) @string
 (exit_dir) @string.special
 (player_message) @string
+(item_detail_text) @string
+(wedge_text) @string
 (quote) @string
+(npc_dialogue) @string
+
 
 ; Comments / notes
 (comment) @comment
@@ -32,32 +36,42 @@
 (schedule_note) @comment.doc
 
 ; Global Markups
-[ "room" "item" "npc" "goal" "spinner" "trigger" "flag"
-"if" "do" "when" "name" "desc" "description" ] @keyword
+[ "if" "do" "when" ] @keyword
 
 [ "(" ")" "{" "}" ] @punctuation.bracket
-[ "," ] @punctuation.delimiter
+
+"," @punctuation.delimiter
 
 [ "true" "false" ] @boolean
 
 ; Room specific
-(_room_stmt ["visited" "exit" "overlay"] @keyword)
+(room_def "room" @keyword)
+(room_name "name" @keyword)
+(room_visited "visited" @keyword)
+(room_desc ["desc" "description"] @keyword)
+(ovl_flag_binary "overlay" @keyword ["if" "flag"] @function)
+(ovl_presence_pair "overlay" @keyword ["if" "item"] @function)
+(overlay_stmt "overlay" @keyword)
+( "" @keyword)
 (presence_pair_block ["present" "absent"] @property)
 (flag_binary_block ["set" "unset"] @property)
-(room_exit "->" @punctuation.special)
+(room_exit "exit" @keyword "->" @punctuation.special)
 (required_flags_stmt "required_flags" @attribute)
 (required_items_stmt "required_items" @attribute)
 (barred_stmt "barred" @property)
 (ovl_text_stmt "text" @property)
-(ovl_item_presence ["present" "absent"] @function)
-(ovl_npc_presence ["present" "absent"] @function)
-(ovl_flag_status ["set" "unset" "complete"] @function)
-(ovl_npc_state_set "here" @keyword)
-(ovl_item_posession ["player" "has" "missing"] @function)
-(ovl_npc_state ["in" "state"] @function)
+(ovl_item_presence ["item" "present" "absent"] @function)
+(ovl_npc_presence ["npc" "present" "absent"] @function)
+(ovl_flag_status ["flag" "set" "unset" "complete"] @function)
+(ovl_npc_state_set
+    "overlay" @keyword
+    ["if" "npc" "here"] @function)
+(ovl_item_posession ["player" "has" "missing" "item"] @function)
+(ovl_npc_state ["npc" "in" "state"] @function)
 (npc_state_set_custom "custom" @constant)
 
 ; Trigger specific
+(trigger_def "trigger" @keyword)
 (only_once_kw) @keyword
 ; when clauses
 (when_cond (always_event) @property)
@@ -76,8 +90,6 @@
 (drop_item ["drop" "item"] @property)
 (unlock_item ["unlock" "item"] @property)
 (ingest_item ["eat" "drink" "inhale"] @property)
-
-
 ; block (if) statements
 (cond_any_group ["any" "(" ")"] @constructor)
 (cond_all_group ["all" "(" ")"] @constructor)
@@ -95,8 +107,6 @@
 (cond_container_has_item ["container" "has" "item"] @property)
 (cond_chance "chance" @property "%" @number)
 (cond_ambient ["ambient" "in" "rooms"] @property)
-
-
 ; block (do) statements
 (action_show "show" @function)
 (action_add_wedge ["add" "wedge" "width" "spinner"] @function)
@@ -118,7 +128,7 @@
 (action_unlock_item ["unlock" "item"] @function)
 (action_lock_exit ["lock" "exit" "from" "direction"] @function)
 (action_unlock_exit ["unlock" "exit" "from" "direction"] @function)
-(action_reveal_exit ["reveal" "exit" "from" "to" "direction"] @functton)
+(action_reveal_exit ["reveal" "exit" "from" "to" "direction"] @function)
 (action_push_player ["push" "player" "to"] @function)
 (action_set_item_desc ["set" "item" "description"] @function)
 (action_npc_random_dialogue ["npc" "random" "dialogue"] @function)
@@ -134,3 +144,37 @@
 (action_spinner_msg ["spinner" "message"] @function)
 (action_schedule_in_or_on ["schedule" "in" "on"] @function)
 (action_schedule_in_if ["schedule" "in" "on"] @function)
+
+; Item Highlights
+(item_def "item" @keyword)
+(item_name_stmt "name" @keyword)
+(item_desc_stmt ["desc" "description"] @keyword)
+(item_portable_stmt "portable" @keyword)
+(item_loc_stmt "location" @keyword)
+(item_restricted_stmt "restricted" @keyword)
+(item_consumable_stmt "consumable" @keyword)
+(item_text_stmt "text" @keyword)
+(item_ability_stmt "ability" @keyword)
+(item_requires_stmt ["requires" "to"] @keyword)
+(item_container_stmt (container_state) @variable.special)
+(item_location ["room" "inventory" "player" "npc" "nowhere" "chest"] @variant.builtin)
+(consumable_uses "uses_left" @property.builtin)
+(consumable_consume_on ["consume_on" "ability"] @property.builtin)
+(consumable_when_consumed
+    "when_consumed" @property.builtin
+    (when_consumed_opt) @variant)
+
+
+
+; NPC Highlights
+(npc_def "npc" @keyword)
+(npc_name_stmt "name" @keyword)
+(npc_desc_stmt ["desc" "description"] @keyword)
+(npc_loc_stmt "location" @keyword
+    (npc_location ["room" "nowhere"] @variant.builtin))
+(npc_state_stmt "state" @keyword)
+(npc_dialogue_block "dialogue" @keyword)
+(npc_movement_stmt ["movement" "rooms"] @keyword)
+(movement_type) @variable.builtin
+(timing_stmt "timing" @keyword (timing) @variable.special)
+(active_stmt "active" @keyword)
