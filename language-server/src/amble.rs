@@ -5,7 +5,6 @@ use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 use tree_sitter::{Parser, Query, QueryCursor, StreamingIterator};
 
-
 #[derive(Debug, Clone, PartialEq)]
 enum SymbolType {
     Room,
@@ -23,7 +22,6 @@ struct RoomReference {
     uri: Url,
     range: Range,
 }
-
 
 #[derive(Debug, Clone)]
 struct ItemDefinition {
@@ -75,7 +73,7 @@ impl Backend {
         parser
             .set_language(&tree_sitter_amble::language())
             .expect("Error loading Amble grammar");
-        
+
         Self {
             client,
             room_definitions: Arc::new(DashMap::new()),
@@ -109,7 +107,6 @@ impl Backend {
     }
 
     fn analyze_document(&self, uri: &Url, text: &str) {
-        
         // Parse the document with tree-sitter
         let tree = {
             let mut parser = self.parser.lock();
@@ -120,47 +117,47 @@ impl Backend {
                 }
             }
         };
-        
+
         let root_node = tree.root_node();
         let uri_str = uri.to_string();
-        
+
         self.room_definitions.retain(|_, def| def.uri != *uri);
         self.item_definitions.retain(|_, def| def.uri != *uri);
         self.npc_definitions.retain(|_, def| def.uri != *uri);
         // Clear old data for this document
-        
+
         // Remove old references from this file
         for mut entry in self.room_references.iter_mut() {
             entry.value_mut().retain(|r| r.uri != *uri);
         }
         for mut entry in self.item_references.iter_mut() {
-        for mut entry in self.npc_references.iter_mut() {
+            for mut entry in self.npc_references.iter_mut() {
+                entry.value_mut().retain(|r| r.uri != *uri);
+            }
             entry.value_mut().retain(|r| r.uri != *uri);
         }
-            entry.value_mut().retain(|r| r.uri != *uri);
-        }
-        
+
         let language = tree_sitter_amble::language();
-        
+
         // Query for room definitions
         let def_query_source = r#"
 (room_def
   room_id: (room_id) @room.definition)
 "#;
-        
+
         let def_query = Query::new(&language, def_query_source).expect("Bad definition query");
         let mut cursor = QueryCursor::new();
         let mut matches = cursor.matches(&def_query, root_node, text.as_bytes());
-        
+
         while let Some(m) = matches.next() {
             for capture in m.captures {
                 let node = capture.node;
                 let room_id = &text[node.byte_range()];
-                
+
                 // Convert tree-sitter position to LSP position
                 let start_point = node.start_position();
                 let end_point = node.end_position();
-                
+
                 let range = Range {
                     start: Position {
                         line: start_point.row as u32,
@@ -171,7 +168,7 @@ impl Backend {
                         character: end_point.column as u32,
                     },
                 };
-                
+
                 self.room_definitions.insert(
                     room_id.to_string(),
                     RoomDefinition {
@@ -181,22 +178,22 @@ impl Backend {
                 );
             }
         }
-        
+
         // Query for room references
         let ref_query_source = r#"
 (_room_ref
   (room_id) @room.reference)
 "#;
-        
+
         let ref_query = Query::new(&language, ref_query_source).expect("Bad reference query");
         let mut cursor = QueryCursor::new();
         let mut matches = cursor.matches(&ref_query, root_node, text.as_bytes());
-        
+
         while let Some(m) = matches.next() {
             for capture in m.captures {
                 let node = capture.node;
                 let room_id = &text[node.byte_range()];
-                
+
                 // Skip if this is the definition itself (room_id in room_def)
                 // We can check if the parent is a room_def
                 if let Some(parent) = node.parent() {
@@ -204,11 +201,11 @@ impl Backend {
                         continue;
                     }
                 }
-                
+
                 // Convert tree-sitter position to LSP position
                 let start_point = node.start_position();
                 let end_point = node.end_position();
-                
+
                 let range = Range {
                     start: Position {
                         line: start_point.row as u32,
@@ -219,7 +216,7 @@ impl Backend {
                         character: end_point.column as u32,
                     },
                 };
-                
+
                 self.room_references
                     .entry(room_id.to_string())
                     .or_insert_with(Vec::new)
@@ -229,26 +226,26 @@ impl Backend {
                     });
             }
         }
-        
 
         // Query for item definitions
         let item_def_query_source = r#"
 (item_def
   item_id: (item_id) @item.definition)
 "#;
-        
-        let item_def_query = Query::new(&language, item_def_query_source).expect("Bad item definition query");
+
+        let item_def_query =
+            Query::new(&language, item_def_query_source).expect("Bad item definition query");
         let mut cursor = QueryCursor::new();
         let mut matches = cursor.matches(&item_def_query, root_node, text.as_bytes());
-        
+
         while let Some(m) = matches.next() {
             for capture in m.captures {
                 let node = capture.node;
                 let item_id = &text[node.byte_range()];
-                
+
                 let start_point = node.start_position();
                 let end_point = node.end_position();
-                
+
                 let range = Range {
                     start: Position {
                         line: start_point.row as u32,
@@ -259,7 +256,7 @@ impl Backend {
                         character: end_point.column as u32,
                     },
                 };
-                
+
                 self.item_definitions.insert(
                     item_id.to_string(),
                     ItemDefinition {
@@ -269,32 +266,33 @@ impl Backend {
                 );
             }
         }
-        
+
         // Query for item references
         let item_ref_query_source = r#"
 (_item_ref
   (item_id) @item.reference)
 "#;
-        
-        let item_ref_query = Query::new(&language, item_ref_query_source).expect("Bad item reference query");
+
+        let item_ref_query =
+            Query::new(&language, item_ref_query_source).expect("Bad item reference query");
         let mut cursor = QueryCursor::new();
         let mut matches = cursor.matches(&item_ref_query, root_node, text.as_bytes());
-        
+
         while let Some(m) = matches.next() {
             for capture in m.captures {
                 let node = capture.node;
                 let item_id = &text[node.byte_range()];
-                
+
                 // Skip if this is the definition itself
                 if let Some(parent) = node.parent() {
                     if parent.kind() == "item_def" {
                         continue;
                     }
                 }
-                
+
                 let start_point = node.start_position();
                 let end_point = node.end_position();
-                
+
                 let range = Range {
                     start: Position {
                         line: start_point.row as u32,
@@ -305,7 +303,7 @@ impl Backend {
                         character: end_point.column as u32,
                     },
                 };
-                
+
                 self.item_references
                     .entry(item_id.to_string())
                     .or_insert_with(Vec::new)
@@ -321,19 +319,20 @@ impl Backend {
 (npc_def
   npc_id: (npc_id) @npc.definition)
 "#;
-        
-        let npc_def_query = Query::new(&language, npc_def_query_source).expect("Bad npc definition query");
+
+        let npc_def_query =
+            Query::new(&language, npc_def_query_source).expect("Bad npc definition query");
         let mut cursor = QueryCursor::new();
         let mut matches = cursor.matches(&npc_def_query, root_node, text.as_bytes());
-        
+
         while let Some(m) = matches.next() {
             for capture in m.captures {
                 let node = capture.node;
                 let npc_id = &text[node.byte_range()];
-                
+
                 let start_point = node.start_position();
                 let end_point = node.end_position();
-                
+
                 let range = Range {
                     start: Position {
                         line: start_point.row as u32,
@@ -344,7 +343,7 @@ impl Backend {
                         character: end_point.column as u32,
                     },
                 };
-                
+
                 self.npc_definitions.insert(
                     npc_id.to_string(),
                     NpcDefinition {
@@ -354,32 +353,33 @@ impl Backend {
                 );
             }
         }
-        
+
         // Query for NPC references
         let npc_ref_query_source = r#"
 (_npc_ref
   (npc_id) @npc.reference)
 "#;
-        
-        let npc_ref_query = Query::new(&language, npc_ref_query_source).expect("Bad npc reference query");
+
+        let npc_ref_query =
+            Query::new(&language, npc_ref_query_source).expect("Bad npc reference query");
         let mut cursor = QueryCursor::new();
         let mut matches = cursor.matches(&npc_ref_query, root_node, text.as_bytes());
-        
+
         while let Some(m) = matches.next() {
             for capture in m.captures {
                 let node = capture.node;
                 let npc_id = &text[node.byte_range()];
-                
+
                 // Skip if this is the definition itself
                 if let Some(parent) = node.parent() {
                     if parent.kind() == "npc_def" {
                         continue;
                     }
                 }
-                
+
                 let start_point = node.start_position();
                 let end_point = node.end_position();
-                
+
                 let range = Range {
                     start: Position {
                         line: start_point.row as u32,
@@ -390,7 +390,7 @@ impl Backend {
                         character: end_point.column as u32,
                     },
                 };
-                
+
                 self.npc_references
                     .entry(npc_id.to_string())
                     .or_insert_with(Vec::new)
@@ -404,8 +404,6 @@ impl Backend {
         self.document_map.insert(uri_str, text.to_string());
     }
 
-    }
-
     fn position_to_offset(text: &str, position: Position) -> Option<usize> {
         let mut current_line = 0;
         let mut current_char = 0;
@@ -415,8 +413,7 @@ impl Backend {
                 return Some(i);
             }
 
-            if ch == '
-' {
+            if ch == '\n' {
                 current_line += 1;
                 current_char = 0;
             } else {
@@ -431,7 +428,11 @@ impl Backend {
         None
     }
 
-    fn get_symbol_at_position(&self, uri: &Url, position: Position) -> Option<(SymbolType, String)> {
+    fn get_symbol_at_position(
+        &self,
+        uri: &Url,
+        position: Position,
+    ) -> Option<(SymbolType, String)> {
         let uri_str = uri.to_string();
         let text = self.document_map.get(&uri_str)?;
 
@@ -494,7 +495,6 @@ impl Backend {
             }
         }
 
-
         // Check if we're on an NPC definition
         for entry in self.npc_definitions.iter() {
             let def = entry.value();
@@ -522,30 +522,6 @@ impl Backend {
                 }
             }
         }
-        None
-    }
-
-    fn position_to_offset(text: &str, position: Position) -> Option<usize> {
-        let mut current_line = 0;
-        let mut current_char = 0;
-
-        for (i, ch) in text.chars().enumerate() {
-            if current_line == position.line && current_char == position.character {
-                return Some(i);
-            }
-
-            if ch == '\n' {
-                current_line += 1;
-                current_char = 0;
-            } else {
-                current_char += 1;
-            }
-        }
-
-        if current_line == position.line && current_char == position.character {
-            return Some(text.len());
-        }
-
         None
     }
 }
@@ -719,7 +695,7 @@ impl LanguageServer for Backend {
                                 range: reference.range,
                             });
                         }
-                }
+                    }
                 }
             }
 
@@ -728,7 +704,6 @@ impl LanguageServer for Backend {
 
         Ok(None)
     }
-
 }
 
 #[tokio::main]
