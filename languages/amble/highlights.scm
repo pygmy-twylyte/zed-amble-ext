@@ -28,6 +28,7 @@
 (wedge_text) @string
 (quote) @string
 (npc_dialogue) @string
+(spinner_text) @string
 
 
 ; Comments / notes
@@ -52,13 +53,12 @@
 (ovl_flag_binary "overlay" @keyword ["if" "flag"] @function)
 (ovl_presence_pair "overlay" @keyword ["if" "item"] @function)
 (overlay_stmt "overlay" @keyword)
-( "" @keyword)
 (presence_pair_block ["present" "absent"] @property)
 (flag_binary_block ["set" "unset"] @property)
 (room_exit "exit" @keyword "->" @punctuation.special)
 (required_flags_stmt "required_flags" @attribute)
 (required_items_stmt "required_items" @attribute)
-(barred_stmt "barred" @property)
+(barred_stmt "barred" @attribute)
 (ovl_text_stmt "text" @property)
 (ovl_item_presence ["item" "present" "absent"] @function)
 (ovl_npc_presence ["npc" "present" "absent"] @function)
@@ -70,93 +70,17 @@
 (ovl_npc_state ["npc" "in" "state"] @function)
 (npc_state_set_custom "custom" @constant)
 
-; Trigger specific
+; Trigger Highlights
 (trigger_def "trigger" @keyword)
 (only_once_kw) @keyword
-; when clauses
-(when_cond (always_event) @property)
-(enter_room) @property
-(take_item ["take" "item"] @property)
-(talk_to_npc ["talk" "to" "npc"] @property)
-(open_item ["open" "item"] @property)
-(leave_room ["leave" "room"] @property)
-(look_at_item ["look" "at" "item"] @property)
-(use_item ["use" "item" "ability"] @property)
-(give_to_npc ["give" "item" "to" "npc"] @property)
-(use_item_on_item ["use" "item" "on" "item" "interaction"] @property)
-(act_on_item ["act" "on" "item"] @property)
-(take_from_npc ["take" "item" "from" "npc"] @property)
-(insert_item_into ["insert" "item" "into"] @property)
-(drop_item ["drop" "item"] @property)
-(unlock_item ["unlock" "item"] @property)
-(ingest_item ["eat" "drink" "inhale"] @property)
-; block (if) statements
-(cond_any_group ["any" "(" ")"] @constructor)
-(cond_all_group ["all" "(" ")"] @constructor)
-(cond_has_flag  ["has" "flag"] @property)
-(cond_missing_flag ["missing" "flag"] @property)
-(cond_has_item  ["has" "item"] @property)
-(cond_missing_item ["missing" "item"] @property)
-(cond_visited_room ["has" "visited" "room"] @property)
-(cond_flag_in_progress ["flag" "in" "progress"] @property)
-(cond_flag_complete ["flag" "complete"] @property)
-(cond_with_npc ["with" "npc"] @property)
-(cond_npc_has_item ["npc" "has" "item"] @property)
-(cond_npc_in_state ["npc" "in" "state"] @property)
-(cond_player_in_room ["player" "in" "room"] @property)
-(cond_container_has_item ["container" "has" "item"] @property)
-(cond_chance "chance" @property "%" @number)
-(cond_ambient ["ambient" "in" "rooms"] @property)
-; block (do) statements
-(action_show "show" @function)
-(action_add_wedge ["add" "wedge" "width" "spinner"] @function)
-(action_add_seq ["add" "seq" "flag"] @function)
-(action_replace_item ["replace" "item" "with"] @function)
-(action_replace_drop_item ["replace" "drop" "item" "with"] @function)
-(action_add_flag ["add" "flag"] @function)
-(action_reset_flag ["reset" "flag"] @function)
-(action_remove_flag ["remove" "flag"] @function)
-(action_advance_flag ["advance" "flag"] @function)
-(spawn_action_stem ["spawn" "item"] @function)
-(action_spawn_room ["into" "room"] @function)
-(action_spawn_container ["into" "in" "container"] @function)
-(action_spawn_inventory ["in" "inventory"] @function)
-(action_spawn_current_room ["in" "current" "room"] @function)
-(action_despawn_item ["despawn" "item"] @function)
-(action_award_points ["award" "points"] @function)
-(action_lock_item ["lock" "item"] @function)
-(action_unlock_item ["unlock" "item"] @function)
-(action_lock_exit ["lock" "exit" "from" "direction"] @function)
-(action_unlock_exit ["unlock" "exit" "from" "direction"] @function)
-(action_reveal_exit ["reveal" "exit" "from" "to" "direction"] @function)
-(action_push_player ["push" "player" "to"] @function)
-(action_set_item_desc ["set" "item" "description"] @function)
-(action_npc_random_dialogue ["npc" "random" "dialogue"] @function)
-(action_npc_says ["npc" "says"] @function)
-(action_npc_refuse_item ["npc" "refuse" "item"] @function)
-(action_set_npc_active ["set" "npc" "active"] @function)
-(action_set_npc_state ["set" "npc" "state"] @function)
-(action_deny_read ["deny" "read"] @function)
-(action_restrict_item ["restrict" "item"] @function)
-(action_give_to_player ["give" "item" "to" "player" "from" "npc"] @function)
-(action_set_barred_msg ["set" "barred" "message" "from" "to"] @function)
-(action_set_container_state ["set" "container" "state"] @function)
-(action_spinner_msg ["spinner" "message"] @function)
-(action_schedule_in_or_on ["schedule" "in" "on"] @function)
-(action_schedule_in_if ["schedule" "in" "on"] @function)
+(_when_event) @property
+(_trigger_cond_atom) @constructor
+(_action_type) @function
 
 ; Item Highlights
 (item_def "item" @keyword)
-(item_name_stmt "name" @keyword)
-(item_desc_stmt ["desc" "description"] @keyword)
-(item_portable_stmt "portable" @keyword)
-(item_loc_stmt "location" @keyword)
-(item_restricted_stmt "restricted" @keyword)
-(item_consumable_stmt "consumable" @keyword)
-(item_text_stmt "text" @keyword)
-(item_ability_stmt "ability" @keyword)
-(item_requires_stmt ["requires" "to"] @keyword)
-(item_container_stmt (container_state) @variable.special)
+(_item_stmt) @keyword
+(container_state) @variable.special
 (item_location ["room" "inventory" "player" "npc" "nowhere" "chest"] @variant.builtin)
 (consumable_uses "uses_left" @property.builtin)
 (consumable_consume_on ["consume_on" "ability"] @property.builtin)
@@ -178,3 +102,20 @@
 (movement_type) @variable.builtin
 (timing_stmt "timing" @keyword (timing) @variable.special)
 (active_stmt "active" @keyword)
+
+
+; Spinner Highlights
+(spinner_def "spinner" @keyword)
+(spinner_stmt ["wedge" "width"] @keyword)
+
+
+; Goal Highlights
+(goal_def "goal" @keyword)
+(goal_name_stmt "name" @keyword)
+(goal_desc_stmt ["desc" "description"] @keyword)
+(goal_group_stmt "group" @keyword)
+(goal_group) @variant.builtin
+(goal_start_stmt ["start" "when"] @keyword)
+(goal_done_stmt ["done" "when"] @keyword)
+(goal_fail_stmt ["fail" "when"] @keyword)
+(_goal_cond) @property

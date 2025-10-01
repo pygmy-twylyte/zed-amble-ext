@@ -148,4 +148,3 @@ goal get-a-towel {
   start when reached room front-entrance
   done when has flag got-towel
 }
-
