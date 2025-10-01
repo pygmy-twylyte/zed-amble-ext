@@ -1,0 +1,41 @@
+# Test file for Amble LSP - Room definitions and references
+
+room test-room-one {
+    name "Test Room One"
+    desc "This is the first test room."
+    visited true
+    exit north -> test-room-two
+    exit south -> test-room-three
+}
+
+room test-room-two {
+    name "Test Room Two"
+    desc "This is the second test room."
+    exit south -> test-room-one
+    exit east -> test-room-four
+}
+
+room test-room-three {
+    name "Test Room Three"
+    desc "This is the third test room."
+    exit north -> test-room-one
+}
+
+room test-room-four {
+    name "Test Room Four"
+    desc "This is the fourth test room."
+    exit west -> test-room-two
+}
+
+# Test trigger with room references
+trigger test-trigger {
+    when enter room test-room-two
+    if player in room test-room-two
+    do push player to test-room-one
+}
+
+trigger visited-trigger {
+    when leave room test-room-four
+    if has visited room test-room-three
+    do msg "You've been to room three!"
+}
