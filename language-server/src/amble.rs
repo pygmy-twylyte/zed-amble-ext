@@ -1,11 +1,12 @@
 use dashmap::DashMap;
+use std::collections::HashSet;
 use std::sync::Arc;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
-use tree_sitter::{Parser, Query, QueryCursor, StreamingIterator};
+use tree_sitter::{Node, Parser, Query, QueryCursor, StreamingIterator};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 enum SymbolType {
     Room,
     Item,
@@ -632,17 +633,20 @@ impl Backend {
     }
 
     fn position_to_offset(text: &str, position: Position) -> Option<usize> {
-        let mut current_line = 0;
-        let mut current_char = 0;
+        let mut current_line = 0u32;
+        let mut current_char = 0u32;
 
-        for (i, ch) in text.chars().enumerate() {
+        for (byte_idx, ch) in text.char_indices() {
             if current_line == position.line && current_char == position.character {
-                return Some(i);
+                return Some(byte_idx);
             }
 
             if ch == '\n' {
                 current_line += 1;
                 current_char = 0;
+                if current_line > position.line {
+                    break;
+                }
             } else {
                 current_char += 1;
             }
@@ -808,6 +812,180 @@ impl Backend {
         None
     }
 
+    fn node_at_offset<'tree>(root: &Node<'tree>, offset: usize) -> Option<Node<'tree>> {
+        if offset > root.end_byte() {
+            return None;
+        }
+
+        let mut cursor = root.walk();
+        if cursor.goto_first_child_for_byte(offset).is_none() {
+            return Some(root.clone());
+        }
+
+        loop {
+            let node = cursor.node();
+            if cursor.goto_first_child_for_byte(offset).is_none() {
+                return Some(node);
+            }
+        }
+    }
+
+    fn field_name_for_child<'tree>(
+        parent: &Node<'tree>,
+        child: &Node<'tree>,
+    ) -> Option<&'static str> {
+        for i in 0..parent.child_count() {
+            if let Some(candidate) = parent.child(i) {
+                if candidate.id() == child.id() {
+                    return parent.field_name_for_child(i as u32);
+                }
+            }
+        }
+        None
+    }
+
+    fn symbol_type_from_kind(kind: &str) -> Option<SymbolType> {
+        match kind {
+            "room_id" | "_room_ref" => Some(SymbolType::Room),
+            "item_id" | "_item_ref" => Some(SymbolType::Item),
+            "npc_id" | "_npc_ref" => Some(SymbolType::Npc),
+            "flag_name" | "_flag_ref" => Some(SymbolType::Flag),
+            "set_name" | "_set_ref" => Some(SymbolType::Set),
+            _ => None,
+        }
+    }
+
+    fn symbol_type_from_field(field_name: &str) -> Option<SymbolType> {
+        match field_name {
+            "room_id" | "dest" | "room" | "from_room" | "to_room" => Some(SymbolType::Room),
+            "item_id" | "tool_id" | "target_id" | "container_id" | "chest_id" => {
+                Some(SymbolType::Item)
+            }
+            "npc_id" => Some(SymbolType::Npc),
+            "flag_name" | "flag" => Some(SymbolType::Flag),
+            "set_name" => Some(SymbolType::Set),
+            _ => None,
+        }
+    }
+
+    fn is_definition_node<'tree>(node: &Node<'tree>, symbol_type: SymbolType) -> bool {
+        let mut current = node.parent();
+        while let Some(parent) = current {
+            let kind = parent.kind();
+            let is_definition = match symbol_type {
+                SymbolType::Room => kind == "room_def",
+                SymbolType::Item => kind == "item_def",
+                SymbolType::Npc => kind == "npc_def",
+                SymbolType::Flag => kind == "action_add_flag" || kind == "action_add_seq",
+                SymbolType::Set => kind == "set_decl",
+            };
+
+            if is_definition {
+                return true;
+            }
+
+            current = parent.parent();
+        }
+
+        false
+    }
+
+    fn is_definition_field(parent_kind: &str, field_name: &str, symbol_type: SymbolType) -> bool {
+        match symbol_type {
+            SymbolType::Room => parent_kind == "room_def" && field_name == "room_id",
+            SymbolType::Item => parent_kind == "item_def" && field_name == "item_id",
+            SymbolType::Npc => parent_kind == "npc_def" && field_name == "npc_id",
+            SymbolType::Flag => {
+                (parent_kind == "action_add_flag" && field_name == "flag")
+                    || (parent_kind == "action_add_seq" && field_name == "flag_name")
+            }
+            SymbolType::Set => parent_kind == "set_decl" && field_name == "name",
+        }
+    }
+
+    fn symbol_type_from_children<'tree>(
+        node: &Node<'tree>,
+        offset: usize,
+        stack: &mut Vec<Node<'tree>>,
+    ) -> Option<SymbolType> {
+        for i in 0..node.child_count() {
+            let child = match node.child(i) {
+                Some(child) => child,
+                None => continue,
+            };
+
+            let start = child.start_byte();
+            let end = child.end_byte();
+            let field_name = node.field_name_for_child(i as u32);
+
+            let in_range = if child.is_missing() {
+                offset >= node.start_byte() && offset <= node.end_byte()
+            } else if start == end {
+                offset == start
+            } else {
+                offset >= start && offset <= end
+            };
+
+            if !in_range {
+                continue;
+            }
+
+            if let Some(field_name) = field_name {
+                if let Some(symbol_type) = Self::symbol_type_from_field(field_name) {
+                    if Self::is_definition_field(node.kind(), field_name, symbol_type) {
+                        continue;
+                    }
+                    return Some(symbol_type);
+                }
+            } else if in_range && child.is_named() {
+                stack.push(child);
+            }
+        }
+
+        None
+    }
+
+    fn symbol_type_from_syntax<'tree>(node: Node<'tree>, offset: usize) -> Option<SymbolType> {
+        let mut stack = vec![node];
+        let mut visited = HashSet::new();
+
+        while let Some(n) = stack.pop() {
+            if !visited.insert(n.id()) {
+                continue;
+            }
+
+            let parent = n.parent();
+
+            if let Some(symbol_type) = Self::symbol_type_from_kind(n.kind()) {
+                if Self::is_definition_node(&n, symbol_type) {
+                    if let Some(parent) = parent {
+                        stack.push(parent);
+                    }
+                    continue;
+                }
+
+                let blocked = parent.as_ref().and_then(|p| {
+                    Self::field_name_for_child(p, &n)
+                        .map(|field| Self::is_definition_field(p.kind(), field, symbol_type))
+                });
+
+                if !blocked.unwrap_or(false) {
+                    return Some(symbol_type);
+                }
+            }
+
+            if let Some(symbol_type) = Self::symbol_type_from_children(&n, offset, &mut stack) {
+                return Some(symbol_type);
+            }
+
+            if let Some(parent) = parent {
+                stack.push(parent);
+            }
+        }
+
+        None
+    }
+
     fn get_completion_context(&self, uri: &Url, position: Position) -> Option<SymbolType> {
         let uri_str = uri.to_string();
         let text = self.document_map.get(&uri_str)?;
@@ -823,168 +1001,17 @@ impl Backend {
         // Convert position to byte offset
         let offset = Self::position_to_offset(&text, position)?;
 
-        // Find the node at this position
-        let node = root_node.descendant_for_byte_range(offset, offset)?;
+        let mut candidate_offsets = vec![offset];
+        if offset > 0 {
+            candidate_offsets.push(offset - 1);
+        }
 
-        // Walk up the tree to find the context
-        let mut current = Some(node);
-        while let Some(n) = current {
-            match n.kind() {
-                "_room_ref" | "room_id" => {
-                    return Some(SymbolType::Room);
+        for candidate in candidate_offsets {
+            if let Some(node) = Self::node_at_offset(&root_node, candidate) {
+                if let Some(symbol_type) = Self::symbol_type_from_syntax(node, candidate) {
+                    return Some(symbol_type);
                 }
-                "_item_ref" | "item_id" => {
-                    return Some(SymbolType::Item);
-                }
-                "_npc_ref" | "npc_id" => {
-                    return Some(SymbolType::Npc);
-                }
-                "_flag_ref" | "flag_name" => {
-                    return Some(SymbolType::Flag);
-                }
-                "_set_ref" | "set_name" => {
-                    return Some(SymbolType::Set);
-                }
-                // Check parent contexts
-                "room_exit" => {
-                    return Some(SymbolType::Room);
-                }
-                "cond_has_flag"
-                | "cond_missing_flag"
-                | "cond_flag_in_progress"
-                | "cond_flag_complete" => {
-                    return Some(SymbolType::Flag);
-                }
-                "action_add_flag"
-                | "action_reset_flag"
-                | "action_remove_flag"
-                | "action_advance_flag" => {
-                    return Some(SymbolType::Flag);
-                }
-                "cond_has_item" | "cond_missing_item" => {
-                    return Some(SymbolType::Item);
-                }
-                "cond_with_npc" => {
-                    return Some(SymbolType::Npc);
-                }
-                _ => {}
             }
-            current = n.parent();
-        }
-
-        // Fallback: Check text before cursor for patterns
-        let line_start_offset = {
-            let mut line_offset = offset;
-            while line_offset > 0 {
-                let prev_char = text.chars().nth(line_offset - 1)?;
-                if prev_char == '\n' {
-                    break;
-                }
-                line_offset -= 1;
-            }
-            line_offset
-        };
-
-        let line_text = &text[line_start_offset..offset];
-
-        // Don't trigger autocomplete inside string literals
-        // Count unescaped double quotes - odd number means we're inside a string
-        let quote_count = line_text.chars().filter(|&c| c == '"').count();
-        if quote_count % 2 == 1 {
-            return None;
-        }
-
-        // Check for room contexts
-        if line_text.contains("exit") && line_text.contains("->") {
-            return Some(SymbolType::Room);
-        }
-        if line_text.contains("when enter room")
-            || line_text.contains("when leave room")
-            || line_text.contains("player in room")
-            || line_text.contains("if player in room")
-            || line_text.contains("push player to")
-            || line_text.contains("pull player to")
-            || line_text.contains("spawn item in room")
-            || line_text.contains("has visited room")
-            || line_text.contains("reached room")
-            || line_text.contains("spawn room")
-            || line_text.contains("to room")
-            || line_text.contains("start when reached room")
-            || line_text.contains("done when reached room")
-        {
-            return Some(SymbolType::Room);
-        }
-
-        // Check for flag contexts
-        if line_text.contains("has flag")
-            || line_text.contains("missing flag")
-            || line_text.contains("add flag")
-            || line_text.contains("reset flag")
-            || line_text.contains("remove flag")
-            || line_text.contains("advance flag")
-            || line_text.contains("flag complete")
-            || line_text.contains("flag in progress")
-            || line_text.contains("overlay if flag")
-            || line_text.contains("overlay if (flag")
-            || line_text.contains("start when has flag")
-            || line_text.contains("start when missing flag")
-            || line_text.contains("start when flag in progress")
-            || line_text.contains("start when flag complete")
-            || line_text.contains("done when has flag")
-            || line_text.contains("done when missing flag")
-            || line_text.contains("done when flag in progress")
-            || line_text.contains("done when flag complete")
-            || line_text.contains("add seq flag")
-            || line_text.contains("flag set")
-            || line_text.contains("flag unset")
-        {
-            return Some(SymbolType::Flag);
-        }
-
-        // Check for item contexts
-        if line_text.contains("has item")
-            || line_text.contains("missing item")
-            || line_text.contains("use item")
-            || line_text.contains("give item")
-            || line_text.contains("take item")
-            || line_text.contains("drop item")
-            || line_text.contains("add item")
-            || line_text.contains("replace item")
-            || line_text.contains("replace drop item")
-            || line_text.contains("npc has item")
-            || line_text.contains("start when has item")
-            || line_text.contains("done when has item")
-            || line_text.contains("on item")  // Covers "act X on item" and "use item X on item"
-            || line_text.contains("despawn item")
-            || line_text.contains("set item")
-            || line_text.contains("overlay if item")
-            || line_text.contains("overlay if (item")
-            || line_text.contains("overlay if (player has item")
-            || line_text.contains("item present")
-            || line_text.contains("item absent")
-            || (line_text.contains("spawn item") && !line_text.contains("in room"))
-        {
-            return Some(SymbolType::Item);
-        }
-
-        // Check for NPC contexts
-        if line_text.contains("talk to npc")
-            || line_text.contains("with npc")
-            || line_text.contains("when npc defeated")
-            || line_text.contains("when npc")
-            || line_text.contains("if with npc")
-            || line_text.contains("overlay if npc")
-            || line_text.contains("overlay if (npc")
-            || line_text.contains("npc here")
-            || line_text.contains("npc in state")
-            || line_text.contains("npc absent")
-        {
-            return Some(SymbolType::Npc);
-        }
-
-        // Check for set contexts
-        if line_text.contains("in rooms") {
-            return Some(SymbolType::Set);
         }
 
         None
@@ -1125,6 +1152,65 @@ impl Backend {
         self.client
             .publish_diagnostics(uri.clone(), diagnostics, None)
             .await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tree_sitter::Parser;
+
+    fn parse_source(source: &str) -> tree_sitter::Tree {
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_amble::language())
+            .expect("load amble grammar");
+        parser.parse(source, None).expect("parse source")
+    }
+
+    fn completion_at(source: &str, position: Position) -> Option<SymbolType> {
+        let tree = parse_source(source);
+        let root = tree.root_node();
+        let offset = Backend::position_to_offset(source, position).unwrap();
+
+        let mut candidates = vec![offset];
+        if offset > 0 {
+            candidates.push(offset - 1);
+        }
+
+        for candidate in candidates {
+            if let Some(node) = Backend::node_at_offset(&root, candidate) {
+                if let Some(symbol) = Backend::symbol_type_from_syntax(node, candidate) {
+                    return Some(symbol);
+                }
+            }
+        }
+
+        None
+    }
+
+    #[test]
+    fn detects_room_reference_context_in_exits() {
+        let source = "room a {\n    exit north -> \n}\n";
+        let symbol = completion_at(
+            source,
+            Position {
+                line: 1,
+                character: 17,
+            },
+        );
+        assert_eq!(symbol, Some(SymbolType::Room));
+    }
+
+    #[test]
+    fn skips_completion_inside_definitions() {
+        let source = "room test-room {\n}\n";
+        let position = Position {
+            line: 0,
+            character: 9,
+        };
+        let symbol = completion_at(source, position);
+        assert_eq!(symbol, None);
     }
 }
 

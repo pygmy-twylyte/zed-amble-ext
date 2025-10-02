@@ -68,3 +68,28 @@ room another-test-room {
         unset "some flag is unset"
     }
 }
+
+trigger "Testing Autocomplete"
+when enter room treasure-room {
+    if any(has flag test-flag, has item test-item-valid) {
+        do show "something"
+    }
+    if any(with npc test_npc, npc in state test-npc-valid happy, npc has item test-npc-valid test-item-valid, player in room test-room-four
+    , container test-item-valid has item lebowski_rug) {
+        do set npc active test_npc
+        do replace item test-item-valid with invitation
+        do replace drop item test-item-valid with test-item-valid
+        do add flag another-test-flag
+        do reset flag another-test-flag
+        do add seq flag another-sequence limit 3
+        do advance flag another-sequence
+        do remove flag another-test-flag
+        do spawn item test-item-valid into room test-room-three
+
+    }
+}
+
+trigger "Autocomplete When Test"
+when use item test-item-valid on item test_item interaction burn {
+    do show "something"
+}
