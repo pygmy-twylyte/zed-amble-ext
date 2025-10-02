@@ -661,6 +661,174 @@ impl Backend {
         }
         None
     }
+
+    fn get_completion_context(&self, uri: &Url, position: Position) -> Option<SymbolType> {
+        let uri_str = uri.to_string();
+        let text = self.document_map.get(&uri_str)?;
+
+        // Parse the document
+        let tree = {
+            let mut parser = self.parser.lock();
+            parser.parse(text.as_str(), None)?
+        };
+
+        let root_node = tree.root_node();
+
+        // Convert position to byte offset
+        let offset = Self::position_to_offset(&text, position)?;
+
+        // Find the node at this position
+        let node = root_node.descendant_for_byte_range(offset, offset)?;
+
+        // Walk up the tree to find the context
+        let mut current = Some(node);
+        while let Some(n) = current {
+            match n.kind() {
+                "_room_ref" | "room_id" => {
+                    return Some(SymbolType::Room);
+                }
+                "_item_ref" | "item_id" => {
+                    return Some(SymbolType::Item);
+                }
+                "_npc_ref" | "npc_id" => {
+                    return Some(SymbolType::Npc);
+                }
+                "_flag_ref" | "flag_name" => {
+                    return Some(SymbolType::Flag);
+                }
+                // Check parent contexts
+                "room_exit" => {
+                    return Some(SymbolType::Room);
+                }
+                "cond_has_flag"
+                | "cond_missing_flag"
+                | "cond_flag_in_progress"
+                | "cond_flag_complete" => {
+                    return Some(SymbolType::Flag);
+                }
+                "action_add_flag"
+                | "action_reset_flag"
+                | "action_remove_flag"
+                | "action_advance_flag" => {
+                    return Some(SymbolType::Flag);
+                }
+                "cond_has_item" | "cond_missing_item" => {
+                    return Some(SymbolType::Item);
+                }
+                "cond_with_npc" => {
+                    return Some(SymbolType::Npc);
+                }
+                _ => {}
+            }
+            current = n.parent();
+        }
+
+        // Fallback: Check text before cursor for patterns
+        let line_start_offset = {
+            let mut line_offset = offset;
+            while line_offset > 0 {
+                let prev_char = text.chars().nth(line_offset - 1)?;
+                if prev_char == '\n' {
+                    break;
+                }
+                line_offset -= 1;
+            }
+            line_offset
+        };
+
+        let line_text = &text[line_start_offset..offset];
+
+        // Check for room contexts
+        if line_text.contains("exit") && line_text.contains("->") {
+            eprintln!("  -> Detected 'exit ... ->' pattern (Room)");
+            return Some(SymbolType::Room);
+        }
+        if line_text.contains("when enter room")
+            || line_text.contains("when leave room")
+            || line_text.contains("player in room")
+            || line_text.contains("if player in room")
+            || line_text.contains("push player to")
+            || line_text.contains("pull player to")
+            || line_text.contains("spawn item in room")
+            || line_text.contains("has visited room")
+            || line_text.contains("reached room")
+            || line_text.contains("spawn room")
+            || line_text.contains("to room")
+            || line_text.contains("start when reached room")
+            || line_text.contains("done when reached room")
+        {
+            return Some(SymbolType::Room);
+        }
+
+        // Check for flag contexts
+        if line_text.contains("has flag")
+            || line_text.contains("missing flag")
+            || line_text.contains("add flag")
+            || line_text.contains("reset flag")
+            || line_text.contains("remove flag")
+            || line_text.contains("advance flag")
+            || line_text.contains("flag complete")
+            || line_text.contains("flag in progress")
+            || line_text.contains("overlay if flag")
+            || line_text.contains("overlay if (flag")
+            || line_text.contains("start when has flag")
+            || line_text.contains("start when missing flag")
+            || line_text.contains("start when flag in progress")
+            || line_text.contains("start when flag complete")
+            || line_text.contains("done when has flag")
+            || line_text.contains("done when missing flag")
+            || line_text.contains("done when flag in progress")
+            || line_text.contains("done when flag complete")
+            || line_text.contains("add seq flag")
+            || line_text.contains("flag set")
+            || line_text.contains("flag unset")
+        {
+            return Some(SymbolType::Flag);
+        }
+
+        // Check for item contexts
+        if line_text.contains("has item")
+            || line_text.contains("missing item")
+            || line_text.contains("use item")
+            || line_text.contains("give item")
+            || line_text.contains("take item")
+            || line_text.contains("drop item")
+            || line_text.contains("add item")
+            || line_text.contains("replace item")
+            || line_text.contains("replace drop item")
+            || line_text.contains("npc has item")
+            || line_text.contains("start when has item")
+            || line_text.contains("done when has item")
+            || line_text.contains("on item")  // Covers "act X on item" and "use item X on item"
+            || line_text.contains("despawn item")
+            || line_text.contains("set item")
+            || line_text.contains("overlay if item")
+            || line_text.contains("overlay if (item")
+            || line_text.contains("overlay if (player has item")
+            || line_text.contains("item present")
+            || line_text.contains("item absent")
+            || (line_text.contains("spawn item") && !line_text.contains("in room"))
+        {
+            return Some(SymbolType::Item);
+        }
+
+        // Check for NPC contexts
+        if line_text.contains("talk to npc")
+            || line_text.contains("with npc")
+            || line_text.contains("when npc defeated")
+            || line_text.contains("when npc")
+            || line_text.contains("if with npc")
+            || line_text.contains("overlay if npc")
+            || line_text.contains("overlay if (npc")
+            || line_text.contains("npc here")
+            || line_text.contains("npc in state")
+            || line_text.contains("npc absent")
+        {
+            return Some(SymbolType::Npc);
+        }
+
+        None
+    }
 }
 
 #[tower_lsp::async_trait]
@@ -677,6 +845,13 @@ impl LanguageServer for Backend {
                 )),
                 definition_provider: Some(OneOf::Left(true)),
                 references_provider: Some(OneOf::Left(true)),
+                completion_provider: Some(CompletionOptions {
+                    trigger_characters: Some(vec![
+                        ">".to_string(), // For "exit north ->"
+                        " ".to_string(), // For "has flag ", "use item ", etc.
+                    ]),
+                    ..Default::default()
+                }),
                 ..Default::default()
             },
         })
@@ -866,6 +1041,89 @@ impl LanguageServer for Backend {
             }
 
             return Ok(Some(locations));
+        }
+
+        Ok(None)
+    }
+
+    async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
+        let uri = params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+
+        // Determine what type of symbol is expected at this position
+        if let Some(symbol_type) = self.get_completion_context(&uri, position) {
+            let mut items = Vec::new();
+
+            match symbol_type {
+                SymbolType::Room => {
+                    // Add all room definitions as completion items
+                    for entry in self.room_definitions.iter() {
+                        let room_id = entry.key();
+                        items.push(CompletionItem {
+                            label: room_id.clone(),
+                            kind: Some(CompletionItemKind::CONSTANT),
+                            detail: Some(format!("Room: {}", room_id)),
+                            documentation: Some(Documentation::String(format!(
+                                "Defined in: {}",
+                                entry.value().uri
+                            ))),
+                            ..Default::default()
+                        });
+                    }
+                }
+                SymbolType::Item => {
+                    // Add all item definitions as completion items
+                    for entry in self.item_definitions.iter() {
+                        let item_id = entry.key();
+                        items.push(CompletionItem {
+                            label: item_id.clone(),
+                            kind: Some(CompletionItemKind::CONSTANT),
+                            detail: Some(format!("Item: {}", item_id)),
+                            documentation: Some(Documentation::String(format!(
+                                "Defined in: {}",
+                                entry.value().uri
+                            ))),
+                            ..Default::default()
+                        });
+                    }
+                }
+                SymbolType::Npc => {
+                    // Add all NPC definitions as completion items
+                    for entry in self.npc_definitions.iter() {
+                        let npc_id = entry.key();
+                        items.push(CompletionItem {
+                            label: npc_id.clone(),
+                            kind: Some(CompletionItemKind::CONSTANT),
+                            detail: Some(format!("NPC: {}", npc_id)),
+                            documentation: Some(Documentation::String(format!(
+                                "Defined in: {}",
+                                entry.value().uri
+                            ))),
+                            ..Default::default()
+                        });
+                    }
+                }
+                SymbolType::Flag => {
+                    // Add all flag definitions as completion items
+                    for entry in self.flag_definitions.iter() {
+                        let flag_name = entry.key();
+                        items.push(CompletionItem {
+                            label: flag_name.clone(),
+                            kind: Some(CompletionItemKind::CONSTANT),
+                            detail: Some(format!("Flag: {}", flag_name)),
+                            documentation: Some(Documentation::String(format!(
+                                "Defined in: {}",
+                                entry.value().uri
+                            ))),
+                            ..Default::default()
+                        });
+                    }
+                }
+            }
+
+            if !items.is_empty() {
+                return Ok(Some(CompletionResponse::Array(items)));
+            }
         }
 
         Ok(None)
