@@ -39,3 +39,40 @@ trigger visited-trigger {
     if has visited room test-room-three
     do msg "You've been to room three!"
 }
+
+# Test flags - definitions and references
+trigger flag-test-trigger {
+    when enter room test-room-one
+    do add flag player-started
+    do add flag game-initialized
+}
+
+trigger flag-check-trigger {
+    when enter room test-room-two
+    if has flag player-started
+    do msg "You've already started!"
+}
+
+trigger flag-missing-trigger {
+    when enter room test-room-three
+    if missing flag completed-quest
+    do msg "You haven't completed the quest yet."
+}
+
+trigger flag-advance-trigger {
+    when enter room test-room-four
+    if has flag game-initialized
+    do advance flag tutorial-progress
+    do msg "Tutorial advanced!"
+}
+
+trigger flag-reset-trigger {
+    when leave room test-room-one
+    if has flag player-started
+    do reset flag player-started
+}
+
+trigger flag-remove-trigger {
+    when leave room test-room-two
+    do remove flag game-initialized
+}

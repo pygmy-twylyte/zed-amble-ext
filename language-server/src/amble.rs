@@ -10,6 +10,7 @@ enum SymbolType {
     Room,
     Item,
     Npc,
+    Flag,
 }
 #[derive(Debug, Clone)]
 struct RoomDefinition {
@@ -47,6 +48,18 @@ struct NpcReference {
     range: Range,
 }
 
+#[derive(Debug, Clone)]
+struct FlagDefinition {
+    uri: Url,
+    range: Range,
+}
+
+#[derive(Debug, Clone)]
+struct FlagReference {
+    uri: Url,
+    range: Range,
+}
+
 struct Backend {
     client: Client,
     // Map from room_id -> definition location
@@ -61,6 +74,10 @@ struct Backend {
     npc_definitions: Arc<DashMap<String, NpcDefinition>>,
     // Map from npc_id -> list of references
     npc_references: Arc<DashMap<String, Vec<NpcReference>>>,
+    // Map from flag_name -> definition location
+    flag_definitions: Arc<DashMap<String, FlagDefinition>>,
+    // Map from flag_name -> list of references
+    flag_references: Arc<DashMap<String, Vec<FlagReference>>>,
     // Map from URI -> document content
     document_map: Arc<DashMap<String, String>>,
     // Tree-sitter parser
@@ -82,6 +99,8 @@ impl Backend {
             item_references: Arc::new(DashMap::new()),
             npc_definitions: Arc::new(DashMap::new()),
             npc_references: Arc::new(DashMap::new()),
+            flag_definitions: Arc::new(DashMap::new()),
+            flag_references: Arc::new(DashMap::new()),
             document_map: Arc::new(DashMap::new()),
             parser: Arc::new(parking_lot::Mutex::new(parser)),
         }
@@ -124,6 +143,7 @@ impl Backend {
         self.room_definitions.retain(|_, def| def.uri != *uri);
         self.item_definitions.retain(|_, def| def.uri != *uri);
         self.npc_definitions.retain(|_, def| def.uri != *uri);
+        self.flag_definitions.retain(|_, def| def.uri != *uri);
         // Clear old data for this document
 
         // Remove old references from this file
@@ -131,9 +151,12 @@ impl Backend {
             entry.value_mut().retain(|r| r.uri != *uri);
         }
         for mut entry in self.item_references.iter_mut() {
-            for mut entry in self.npc_references.iter_mut() {
-                entry.value_mut().retain(|r| r.uri != *uri);
-            }
+            entry.value_mut().retain(|r| r.uri != *uri);
+        }
+        for mut entry in self.npc_references.iter_mut() {
+            entry.value_mut().retain(|r| r.uri != *uri);
+        }
+        for mut entry in self.flag_references.iter_mut() {
             entry.value_mut().retain(|r| r.uri != *uri);
         }
 
@@ -400,6 +423,92 @@ impl Backend {
                     });
             }
         }
+
+        // Query for flag definitions
+        let flag_def_query_source = r#"
+(action_add_flag
+  flag: (flag_name) @flag.definition)
+"#;
+
+        let flag_def_query =
+            Query::new(&language, flag_def_query_source).expect("Bad flag definition query");
+        let mut cursor = QueryCursor::new();
+        let mut matches = cursor.matches(&flag_def_query, root_node, text.as_bytes());
+
+        while let Some(m) = matches.next() {
+            for capture in m.captures {
+                let node = capture.node;
+                let flag_name = &text[node.byte_range()];
+
+                let start_point = node.start_position();
+                let end_point = node.end_position();
+
+                let range = Range {
+                    start: Position {
+                        line: start_point.row as u32,
+                        character: start_point.column as u32,
+                    },
+                    end: Position {
+                        line: end_point.row as u32,
+                        character: end_point.column as u32,
+                    },
+                };
+
+                self.flag_definitions.insert(
+                    flag_name.to_string(),
+                    FlagDefinition {
+                        uri: uri.clone(),
+                        range,
+                    },
+                );
+            }
+        }
+
+        // Query for flag references
+        let flag_ref_query_source = r#"
+(_flag_ref) @flag.reference
+"#;
+
+        let flag_ref_query =
+            Query::new(&language, flag_ref_query_source).expect("Bad flag reference query");
+        let mut cursor = QueryCursor::new();
+        let mut matches = cursor.matches(&flag_ref_query, root_node, text.as_bytes());
+
+        while let Some(m) = matches.next() {
+            for capture in m.captures {
+                let node = capture.node;
+                let flag_name = &text[node.byte_range()];
+
+                // Skip if this is the definition itself
+                if let Some(parent) = node.parent() {
+                    if parent.kind() == "action_add_flag" {
+                        continue;
+                    }
+                }
+
+                let start_point = node.start_position();
+                let end_point = node.end_position();
+
+                let range = Range {
+                    start: Position {
+                        line: start_point.row as u32,
+                        character: start_point.column as u32,
+                    },
+                    end: Position {
+                        line: end_point.row as u32,
+                        character: end_point.column as u32,
+                    },
+                };
+
+                self.flag_references
+                    .entry(flag_name.to_string())
+                    .or_insert_with(Vec::new)
+                    .push(FlagReference {
+                        uri: uri.clone(),
+                        range,
+                    });
+            }
+        }
         // Store the document
         self.document_map.insert(uri_str, text.to_string());
     }
@@ -522,6 +631,34 @@ impl Backend {
                 }
             }
         }
+
+        // Check if we're on a flag definition
+        for entry in self.flag_definitions.iter() {
+            let def = entry.value();
+            if def.uri == *uri {
+                let start_offset = Self::position_to_offset(&text, def.range.start)?;
+                let end_offset = Self::position_to_offset(&text, def.range.end)?;
+
+                if offset >= start_offset && offset <= end_offset {
+                    return Some((SymbolType::Flag, entry.key().clone()));
+                }
+            }
+        }
+
+        // Check if we're on a flag reference
+        for entry in self.flag_references.iter() {
+            let flag_name = entry.key();
+            for reference in entry.value() {
+                if reference.uri == *uri {
+                    let start_offset = Self::position_to_offset(&text, reference.range.start)?;
+                    let end_offset = Self::position_to_offset(&text, reference.range.end)?;
+
+                    if offset >= start_offset && offset <= end_offset {
+                        return Some((SymbolType::Flag, flag_name.clone()));
+                    }
+                }
+            }
+        }
         None
     }
 }
@@ -619,6 +756,14 @@ impl LanguageServer for Backend {
                         })));
                     }
                 }
+                SymbolType::Flag => {
+                    if let Some(def) = self.flag_definitions.get(&symbol_id) {
+                        return Ok(Some(GotoDefinitionResponse::Scalar(Location {
+                            uri: def.uri.clone(),
+                            range: def.range,
+                        })));
+                    }
+                }
             }
         }
 
@@ -689,6 +834,27 @@ impl LanguageServer for Backend {
 
                     // Add all references
                     if let Some(refs) = self.npc_references.get(&symbol_id) {
+                        for reference in refs.value() {
+                            locations.push(Location {
+                                uri: reference.uri.clone(),
+                                range: reference.range,
+                            });
+                        }
+                    }
+                }
+                SymbolType::Flag => {
+                    // Add the definition if requested
+                    if params.context.include_declaration {
+                        if let Some(def) = self.flag_definitions.get(&symbol_id) {
+                            locations.push(Location {
+                                uri: def.uri.clone(),
+                                range: def.range,
+                            });
+                        }
+                    }
+
+                    // Add all references
+                    if let Some(refs) = self.flag_references.get(&symbol_id) {
                         for reference in refs.value() {
                             locations.push(Location {
                                 uri: reference.uri.clone(),
