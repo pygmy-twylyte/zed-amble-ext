@@ -9,6 +9,10 @@ room high-ridge {
         set "You're occasionally blinded by a flash of sunlight reflected from the gleaming, freshly cleaned plaque on the pillar at the base of the steps."
         unset "Near the bottom of the stairs stands an impressive, intricately sculpted pillar bearing a plaque tarnished with age and forest grime."
     }
+
+    overlay if flag set self-destruct-armed {
+        text "The room looks different."
+    }
     exit up -> parish-landing
 }
 
@@ -381,7 +385,21 @@ room corridor-north {
 
 room observation-room {
     name "Field Observation Room"
-    desc "Thick observation windows, long since spiderwebbed with cracks, overlook what should be Room AA-3B—but only darkness and occasional flashes of unreality appear beyond. Abandoned swivel chairs and battered clipboards litter the room. A faint smell of burnt ozone hangs in the air.\n\nA console near the glass flickers with a repeating message: 'CONTAINMENT BREACH LOGGED – STATUS: UNRESOLVED.'"
+    desc "Thick observation windows, long since spiderwebbed with cracks, overlook what should be Room AA-3B—but only darkness and occasional flashes of unreality appear beyond. Abandoned swivel chairs and battered clipboards litter the room. A faint smell of burnt ozone hangs in the air.\n\nA console near the glass flickers with a repeating message: 'CONTAINMENT BREACH LOGGED – STATUS: UNRESOLVED.' Through the south-facing window, you can see a cavernous room with a large, perfectly reflectionless black monolith at its center and bulky and outdated computer terminal on the far wall."
+    overlay if flag unset talked-to-hal {
+        text "The terminal in the room to the south appears to be completely dark and inactive, much like the monolith. Yet it seems to be looking back through the window at you somehow -- also like the monolith."
+    }
+    overlay if flag set hal-reboot#1 {
+        text "The terminal in the neighboring monolith room has powered on and a few panel lights are blinking slowly."
+    }
+    overlay if flag set hal-reboot#2 {
+        text "Through the southern window, you can see that the red light in HAL's lens is on, watching. A boot sequence scrolls rapidly across the monitor."
+    }
+
+    overlay if npc present emh {
+        text "The emh stands and stares into the void through to north in silence."
+    }
+
     exit east -> corridor-north
     exit south -> monolith-room
 }

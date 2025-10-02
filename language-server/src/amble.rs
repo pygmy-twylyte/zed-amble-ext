@@ -133,6 +133,11 @@ impl Backend {
                         let path = entry.path();
                         if path.extension().and_then(|s| s.to_str()) == Some("amble") {
                             if let Ok(uri) = Url::from_file_path(&path) {
+                                let uri_str = uri.to_string();
+                                // Skip if already analyzed (e.g., from did_open)
+                                if self.document_map.contains_key(&uri_str) {
+                                    continue;
+                                }
                                 if let Ok(content) = std::fs::read_to_string(&path) {
                                     self.analyze_document(&uri, &content);
                                 }
@@ -508,7 +513,7 @@ impl Backend {
 
                 // Skip if this is the definition itself
                 if let Some(parent) = node.parent() {
-                    if parent.kind() == "action_add_flag" {
+                    if parent.kind() == "action_add_flag" || parent.kind() == "action_add_seq" {
                         continue;
                     }
                 }
@@ -882,9 +887,15 @@ impl Backend {
 
         let line_text = &text[line_start_offset..offset];
 
+        // Don't trigger autocomplete inside string literals
+        // Count unescaped double quotes - odd number means we're inside a string
+        let quote_count = line_text.chars().filter(|&c| c == '"').count();
+        if quote_count % 2 == 1 {
+            return None;
+        }
+
         // Check for room contexts
         if line_text.contains("exit") && line_text.contains("->") {
-            eprintln!("  -> Detected 'exit ... ->' pattern (Room)");
             return Some(SymbolType::Room);
         }
         if line_text.contains("when enter room")
@@ -1131,13 +1142,7 @@ impl LanguageServer for Backend {
                 )),
                 definition_provider: Some(OneOf::Left(true)),
                 references_provider: Some(OneOf::Left(true)),
-                completion_provider: Some(CompletionOptions {
-                    trigger_characters: Some(vec![
-                        ">".to_string(), // For "exit north ->"
-                        " ".to_string(), // For "has flag ", "use item ", etc.
-                    ]),
-                    ..Default::default()
-                }),
+                completion_provider: Some(CompletionOptions::default()),
                 ..Default::default()
             },
         })
