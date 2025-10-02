@@ -424,10 +424,14 @@ impl Backend {
             }
         }
 
-        // Query for flag definitions
+        // Query for flag definitions (both regular and sequence flags)
         let flag_def_query_source = r#"
-(action_add_flag
-  flag: (flag_name) @flag.definition)
+[
+  (action_add_flag
+    flag: (flag_name) @flag.definition)
+  (action_add_seq
+    flag_name: (flag_name) @flag.definition)
+]
 "#;
 
         let flag_def_query =
@@ -911,7 +915,11 @@ impl Backend {
         // Check flag references
         for entry in self.flag_references.iter() {
             let flag_name = entry.key();
-            if !self.flag_definitions.contains_key(flag_name) {
+
+            // Strip step number from sequence flags (e.g., "hal-reboot#3" -> "hal-reboot")
+            let base_flag_name = flag_name.split('#').next().unwrap_or(flag_name);
+
+            if !self.flag_definitions.contains_key(base_flag_name) {
                 // Undefined flag reference
                 for reference in entry.value() {
                     if reference.uri == *uri {
@@ -1046,7 +1054,9 @@ impl LanguageServer for Backend {
                     }
                 }
                 SymbolType::Flag => {
-                    if let Some(def) = self.flag_definitions.get(&symbol_id) {
+                    // Strip step number from sequence flags (e.g., "hal-reboot#2" -> "hal-reboot")
+                    let base_flag_name = symbol_id.split('#').next().unwrap_or(&symbol_id);
+                    if let Some(def) = self.flag_definitions.get(base_flag_name) {
                         return Ok(Some(GotoDefinitionResponse::Scalar(Location {
                             uri: def.uri.clone(),
                             range: def.range,
@@ -1132,9 +1142,12 @@ impl LanguageServer for Backend {
                     }
                 }
                 SymbolType::Flag => {
+                    // Strip step number from sequence flags (e.g., "hal-reboot#2" -> "hal-reboot")
+                    let base_flag_name = symbol_id.split('#').next().unwrap_or(&symbol_id);
+
                     // Add the definition if requested
                     if params.context.include_declaration {
-                        if let Some(def) = self.flag_definitions.get(&symbol_id) {
+                        if let Some(def) = self.flag_definitions.get(base_flag_name) {
                             locations.push(Location {
                                 uri: def.uri.clone(),
                                 range: def.range,
@@ -1143,7 +1156,7 @@ impl LanguageServer for Backend {
                     }
 
                     // Add all references
-                    if let Some(refs) = self.flag_references.get(&symbol_id) {
+                    if let Some(refs) = self.flag_references.get(base_flag_name) {
                         for reference in refs.value() {
                             locations.push(Location {
                                 uri: reference.uri.clone(),

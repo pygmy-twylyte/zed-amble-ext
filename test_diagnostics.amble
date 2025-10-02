@@ -16,9 +16,16 @@ npc test-npc-valid {
     desc "This NPC is defined."
 }
 
-trigger "define-valid-flag" {
-    when enter room test-room-valid
-    {do add flag test-flag-valid}
+trigger "define-valid-flag"
+when enter room test-room-valid
+{
+    do add flag test-flag-valid
+}
+
+# Sequence flag definition
+trigger "define-sequence-flag"
+when enter room test-room-valid {
+    do add seq flag test-sequence-flag limit 3
 }
 
 # REFERENCES TO VALID SYMBOLS - Should NOT produce errors
@@ -38,6 +45,17 @@ trigger "valid-references"
     do msg "All references are valid!"
 }
 
+# Sequence flag references with step numbers - Should NOT produce errors
+trigger "sequence-flag-references"
+when enter room test-room-valid {
+        if has flag test-sequence-flag#0 { do show "" }
+        if has flag test-sequence-flag#1 { do show "" }
+        if has flag test-sequence-flag#2 { do show "" }
+            do advance flag test-sequence-flag
+            do show "Sequence flags work!"
+    }
+
+
 # UNDEFINED REFERENCES - Should produce ERROR diagnostics with red squiggles
 
 # Undefined room reference
@@ -54,42 +72,43 @@ room room-with-bad-exit {
 }
 
 # Undefined item reference
-trigger undefined-item-trigger {
-    when enter room test-room-valid
-    if has item undefined-item-name
-    do msg "This item doesn't exist!"
+trigger "undefined-item-trigger"
+when enter room test-room-valid {
+    if has item undefined-item-name {
+        do show "This item doesn't exist!"
+    }
 }
 
 # Undefined NPC reference
-trigger undefined-npc-trigger {
-    when enter room test-room-valid
-    if with npc undefined-npc-name
-    do msg "This NPC doesn't exist!"
+trigger "undefined-npc-trigger"
+    when enter room test-room-valid {
+        if with npc undefined-npc-name { do show ""}
+    do show "This NPC doesn't exist!"
+    }
 }
 
 # Undefined flag reference
 trigger "undefined-flag-trigger"
     when enter room test-room-valid {
-    if has flag undefined-flag-name
-    do msg "This flag was never added!"
+        if has flag undefined-flag-name { do show "" }
+    do show "This flag was never added!"
 }
 
 # Multiple undefined references in one trigger
 trigger "multiple-undefined"
-    when enter room undefined-room-xyz
-    if has flag undefined-flag-abc
-    if has item undefined-item-def
-    if with npc undefined-npc-ghi
+    when enter room undefined-room-xyz {
+        if has flag undefined-flag-abc { do show "" }
+    if has item undefined-item-def { do show "" }
+    if with npc undefined-npc-ghi { do show "" }
     do push player to undefined-room-jkl
 }
 
 # Mix of valid and undefined
-trigger "mixed-references"
-    when enter room test-room-valid
-    if has flag test-flag-valid{}
-    if missing flag undefined-mixed-flag {}
-    if has item undefined-mixed-item {}
-    do msg "Some valid, some not"
+trigger "mixed-references" when enter room test-room-valid {
+    if has flag test-flag-valid { do show "" }
+    if missing flag undefined-mixed-flag { do show "" }
+    if has item undefined-mixed-item { do show "" }
+    do show "Some valid, some not"
 }
 
 # Overlay with undefined references
@@ -97,19 +116,19 @@ room overlay-test {
     name "Overlay Test"
     desc "Testing overlays with undefined refs."
     visited false
-    overlay if has flag undefined-overlay-flag {
+    overlay if flag set undefined-overlay-flag {
         text "This flag doesn't exist"
     }
 
     overlay if item undefined-overlay-item {
-        absent "asdfasf"
         present "This item doesn't exist"
+        absent "asdfasf"
     }
 
     overlay if npc undefined-overlay-npc here {
         normal "This NPC doesn't exist"
     }
-    exit north -> north-room
+    exit north -> north-room-does-not-exist
 }
 
 # Goal with undefined references
