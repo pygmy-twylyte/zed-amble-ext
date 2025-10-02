@@ -11,6 +11,7 @@
 (flag_name) @emphasis
 (spinner_id) @variable
 (goal_id) @enum
+(set_name) @variable
 
 ; Things with defined variants
 (item_ability) @variant
@@ -44,6 +45,9 @@
 "," @punctuation.delimiter
 
 [ "true" "false" ] @boolean
+
+(set_decl ["let" "set"] @keyword
+    "=" @operator)
 
 ; Room specific
 (room_def "room" @keyword)

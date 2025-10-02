@@ -16,11 +16,13 @@ npc test-npc-valid {
     desc "This NPC is defined."
 }
 
-trigger "define-valid-flag"
-when enter room test-room-valid
-{
+trigger define-valid-flag {
+    when enter room test-room-valid
     do add flag test-flag-valid
 }
+
+# Valid set definition
+let set test-set-valid = (test-room-valid, another-valid-room)
 
 # Sequence flag definition
 trigger "define-sequence-flag"
@@ -52,8 +54,15 @@ when enter room test-room-valid {
         if has flag test-sequence-flag#1 { do show "" }
         if has flag test-sequence-flag#2 { do show "" }
             do advance flag test-sequence-flag
-            do show "Sequence flags work!"
-    }
+            do msg "Sequence flags work!"
+        }
+
+        # Set references - Should NOT produce errors
+        trigger set-references {
+            when always
+            if in rooms test-set-valid
+            do msg "Set reference is valid!"
+        }
 
 
 # UNDEFINED REFERENCES - Should produce ERROR diagnostics with red squiggles
@@ -88,10 +97,17 @@ trigger "undefined-npc-trigger"
 }
 
 # Undefined flag reference
-trigger "undefined-flag-trigger"
-    when enter room test-room-valid {
-        if has flag undefined-flag-name { do show "" }
-    do show "This flag was never added!"
+trigger undefined-flag-trigger {
+    when enter room test-room-valid
+    if has flag undefined-flag-name
+    do msg "This flag was never added!"
+}
+
+# Undefined set reference
+trigger undefined-set-trigger {
+    when always
+    if in rooms undefined-set-name
+    do msg "This set doesn't exist!"
 }
 
 # Multiple undefined references in one trigger

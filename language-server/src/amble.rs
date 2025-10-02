@@ -11,6 +11,7 @@ enum SymbolType {
     Item,
     Npc,
     Flag,
+    Set,
 }
 #[derive(Debug, Clone)]
 struct RoomDefinition {
@@ -60,6 +61,18 @@ struct FlagReference {
     range: Range,
 }
 
+#[derive(Debug, Clone)]
+struct SetDefinition {
+    uri: Url,
+    range: Range,
+}
+
+#[derive(Debug, Clone)]
+struct SetReference {
+    uri: Url,
+    range: Range,
+}
+
 struct Backend {
     client: Client,
     // Map from room_id -> definition location
@@ -78,6 +91,10 @@ struct Backend {
     flag_definitions: Arc<DashMap<String, FlagDefinition>>,
     // Map from flag_name -> list of references
     flag_references: Arc<DashMap<String, Vec<FlagReference>>>,
+    // Map from set_name -> definition location
+    set_definitions: Arc<DashMap<String, SetDefinition>>,
+    // Map from set_name -> list of references
+    set_references: Arc<DashMap<String, Vec<SetReference>>>,
     // Map from URI -> document content
     document_map: Arc<DashMap<String, String>>,
     // Tree-sitter parser
@@ -101,6 +118,8 @@ impl Backend {
             npc_references: Arc::new(DashMap::new()),
             flag_definitions: Arc::new(DashMap::new()),
             flag_references: Arc::new(DashMap::new()),
+            set_definitions: Arc::new(DashMap::new()),
+            set_references: Arc::new(DashMap::new()),
             document_map: Arc::new(DashMap::new()),
             parser: Arc::new(parking_lot::Mutex::new(parser)),
         }
@@ -144,6 +163,7 @@ impl Backend {
         self.item_definitions.retain(|_, def| def.uri != *uri);
         self.npc_definitions.retain(|_, def| def.uri != *uri);
         self.flag_definitions.retain(|_, def| def.uri != *uri);
+        self.set_definitions.retain(|_, def| def.uri != *uri);
         // Clear old data for this document
 
         // Remove old references from this file
@@ -157,6 +177,9 @@ impl Backend {
             entry.value_mut().retain(|r| r.uri != *uri);
         }
         for mut entry in self.flag_references.iter_mut() {
+            entry.value_mut().retain(|r| r.uri != *uri);
+        }
+        for mut entry in self.set_references.iter_mut() {
             entry.value_mut().retain(|r| r.uri != *uri);
         }
 
@@ -513,6 +536,92 @@ impl Backend {
                     });
             }
         }
+
+        // Query for set definitions
+        let set_def_query_source = r#"
+(set_decl
+  name: (set_name) @set.definition)
+"#;
+
+        let set_def_query =
+            Query::new(&language, set_def_query_source).expect("Bad set definition query");
+        let mut cursor = QueryCursor::new();
+        let mut matches = cursor.matches(&set_def_query, root_node, text.as_bytes());
+
+        while let Some(m) = matches.next() {
+            for capture in m.captures {
+                let node = capture.node;
+                let set_name = &text[node.byte_range()];
+
+                let start_point = node.start_position();
+                let end_point = node.end_position();
+
+                let range = Range {
+                    start: Position {
+                        line: start_point.row as u32,
+                        character: start_point.column as u32,
+                    },
+                    end: Position {
+                        line: end_point.row as u32,
+                        character: end_point.column as u32,
+                    },
+                };
+
+                self.set_definitions.insert(
+                    set_name.to_string(),
+                    SetDefinition {
+                        uri: uri.clone(),
+                        range,
+                    },
+                );
+            }
+        }
+
+        // Query for set references
+        let set_ref_query_source = r#"
+(set_name) @set.reference
+"#;
+
+        let set_ref_query =
+            Query::new(&language, set_ref_query_source).expect("Bad set reference query");
+        let mut cursor = QueryCursor::new();
+        let mut matches = cursor.matches(&set_ref_query, root_node, text.as_bytes());
+
+        while let Some(m) = matches.next() {
+            for capture in m.captures {
+                let node = capture.node;
+                let set_name = &text[node.byte_range()];
+
+                // Skip if this is the definition itself
+                if let Some(parent) = node.parent() {
+                    if parent.kind() == "set_decl" {
+                        continue;
+                    }
+                }
+
+                let start_point = node.start_position();
+                let end_point = node.end_position();
+
+                let range = Range {
+                    start: Position {
+                        line: start_point.row as u32,
+                        character: start_point.column as u32,
+                    },
+                    end: Position {
+                        line: end_point.row as u32,
+                        character: end_point.column as u32,
+                    },
+                };
+
+                self.set_references
+                    .entry(set_name.to_string())
+                    .or_insert_with(Vec::new)
+                    .push(SetReference {
+                        uri: uri.clone(),
+                        range,
+                    });
+            }
+        }
         // Store the document
         self.document_map.insert(uri_str, text.to_string());
     }
@@ -663,6 +772,34 @@ impl Backend {
                 }
             }
         }
+
+        // Check if we're on a set definition
+        for entry in self.set_definitions.iter() {
+            let def = entry.value();
+            if def.uri == *uri {
+                let start_offset = Self::position_to_offset(&text, def.range.start)?;
+                let end_offset = Self::position_to_offset(&text, def.range.end)?;
+
+                if offset >= start_offset && offset <= end_offset {
+                    return Some((SymbolType::Set, entry.key().clone()));
+                }
+            }
+        }
+
+        // Check if we're on a set reference
+        for entry in self.set_references.iter() {
+            let set_name = entry.key();
+            for reference in entry.value() {
+                if reference.uri == *uri {
+                    let start_offset = Self::position_to_offset(&text, reference.range.start)?;
+                    let end_offset = Self::position_to_offset(&text, reference.range.end)?;
+
+                    if offset >= start_offset && offset <= end_offset {
+                        return Some((SymbolType::Set, set_name.clone()));
+                    }
+                }
+            }
+        }
         None
     }
 
@@ -699,6 +836,9 @@ impl Backend {
                 }
                 "_flag_ref" | "flag_name" => {
                     return Some(SymbolType::Flag);
+                }
+                "_set_ref" | "set_name" => {
+                    return Some(SymbolType::Set);
                 }
                 // Check parent contexts
                 "room_exit" => {
@@ -831,6 +971,11 @@ impl Backend {
             return Some(SymbolType::Npc);
         }
 
+        // Check for set contexts
+        if line_text.contains("in rooms") {
+            return Some(SymbolType::Set);
+        }
+
         None
     }
 
@@ -846,8 +991,11 @@ impl Backend {
         // Check room references
         for entry in self.room_references.iter() {
             let room_id = entry.key();
-            if !self.room_definitions.contains_key(room_id) {
-                // Undefined room reference
+            // Allow set names in place of room references (for "in rooms <set>" context)
+            if !self.room_definitions.contains_key(room_id)
+                && !self.set_definitions.contains_key(room_id)
+            {
+                // Undefined room reference (and not a valid set either)
                 for reference in entry.value() {
                     if reference.uri == *uri {
                         diagnostics.push(Diagnostic {
@@ -930,6 +1078,29 @@ impl Backend {
                             code_description: None,
                             source: Some("amble-lsp".to_string()),
                             message: format!("Undefined flag: '{}'", flag_name),
+                            related_information: None,
+                            tags: None,
+                            data: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Check set references
+        for entry in self.set_references.iter() {
+            let set_name = entry.key();
+            if !self.set_definitions.contains_key(set_name) {
+                // Undefined set reference
+                for reference in entry.value() {
+                    if reference.uri == *uri {
+                        diagnostics.push(Diagnostic {
+                            range: reference.range,
+                            severity: Some(DiagnosticSeverity::ERROR),
+                            code: None,
+                            code_description: None,
+                            source: Some("amble-lsp".to_string()),
+                            message: format!("Undefined set: '{}'", set_name),
                             related_information: None,
                             tags: None,
                             data: None,
@@ -1063,6 +1234,14 @@ impl LanguageServer for Backend {
                         })));
                     }
                 }
+                SymbolType::Set => {
+                    if let Some(def) = self.set_definitions.get(&symbol_id) {
+                        return Ok(Some(GotoDefinitionResponse::Scalar(Location {
+                            uri: def.uri.clone(),
+                            range: def.range,
+                        })));
+                    }
+                }
             }
         }
 
@@ -1165,6 +1344,27 @@ impl LanguageServer for Backend {
                         }
                     }
                 }
+                SymbolType::Set => {
+                    // Add the definition if requested
+                    if params.context.include_declaration {
+                        if let Some(def) = self.set_definitions.get(&symbol_id) {
+                            locations.push(Location {
+                                uri: def.uri.clone(),
+                                range: def.range,
+                            });
+                        }
+                    }
+
+                    // Add all references
+                    if let Some(refs) = self.set_references.get(&symbol_id) {
+                        for reference in refs.value() {
+                            locations.push(Location {
+                                uri: reference.uri.clone(),
+                                range: reference.range,
+                            });
+                        }
+                    }
+                }
             }
 
             return Ok(Some(locations));
@@ -1238,6 +1438,22 @@ impl LanguageServer for Backend {
                             label: flag_name.clone(),
                             kind: Some(CompletionItemKind::CONSTANT),
                             detail: Some(format!("Flag: {}", flag_name)),
+                            documentation: Some(Documentation::String(format!(
+                                "Defined in: {}",
+                                entry.value().uri
+                            ))),
+                            ..Default::default()
+                        });
+                    }
+                }
+                SymbolType::Set => {
+                    // Add all set definitions as completion items
+                    for entry in self.set_definitions.iter() {
+                        let set_name = entry.key();
+                        items.push(CompletionItem {
+                            label: set_name.clone(),
+                            kind: Some(CompletionItemKind::CONSTANT),
+                            detail: Some(format!("Set: {}", set_name)),
                             documentation: Some(Documentation::String(format!(
                                 "Defined in: {}",
                                 entry.value().uri
