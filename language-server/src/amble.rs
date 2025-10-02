@@ -829,6 +829,113 @@ impl Backend {
 
         None
     }
+
+    async fn check_diagnostics(&self, uri: &Url) {
+        let uri_str = uri.to_string();
+        // Only check diagnostics if document is loaded
+        if !self.document_map.contains_key(&uri_str) {
+            return;
+        }
+
+        let mut diagnostics = Vec::new();
+
+        // Check room references
+        for entry in self.room_references.iter() {
+            let room_id = entry.key();
+            if !self.room_definitions.contains_key(room_id) {
+                // Undefined room reference
+                for reference in entry.value() {
+                    if reference.uri == *uri {
+                        diagnostics.push(Diagnostic {
+                            range: reference.range,
+                            severity: Some(DiagnosticSeverity::ERROR),
+                            code: None,
+                            code_description: None,
+                            source: Some("amble-lsp".to_string()),
+                            message: format!("Undefined room: '{}'", room_id),
+                            related_information: None,
+                            tags: None,
+                            data: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Check item references
+        for entry in self.item_references.iter() {
+            let item_id = entry.key();
+            if !self.item_definitions.contains_key(item_id) {
+                // Undefined item reference
+                for reference in entry.value() {
+                    if reference.uri == *uri {
+                        diagnostics.push(Diagnostic {
+                            range: reference.range,
+                            severity: Some(DiagnosticSeverity::ERROR),
+                            code: None,
+                            code_description: None,
+                            source: Some("amble-lsp".to_string()),
+                            message: format!("Undefined item: '{}'", item_id),
+                            related_information: None,
+                            tags: None,
+                            data: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Check NPC references
+        for entry in self.npc_references.iter() {
+            let npc_id = entry.key();
+            if !self.npc_definitions.contains_key(npc_id) {
+                // Undefined NPC reference
+                for reference in entry.value() {
+                    if reference.uri == *uri {
+                        diagnostics.push(Diagnostic {
+                            range: reference.range,
+                            severity: Some(DiagnosticSeverity::ERROR),
+                            code: None,
+                            code_description: None,
+                            source: Some("amble-lsp".to_string()),
+                            message: format!("Undefined NPC: '{}'", npc_id),
+                            related_information: None,
+                            tags: None,
+                            data: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Check flag references
+        for entry in self.flag_references.iter() {
+            let flag_name = entry.key();
+            if !self.flag_definitions.contains_key(flag_name) {
+                // Undefined flag reference
+                for reference in entry.value() {
+                    if reference.uri == *uri {
+                        diagnostics.push(Diagnostic {
+                            range: reference.range,
+                            severity: Some(DiagnosticSeverity::ERROR),
+                            code: None,
+                            code_description: None,
+                            source: Some("amble-lsp".to_string()),
+                            message: format!("Undefined flag: '{}'", flag_name),
+                            related_information: None,
+                            tags: None,
+                            data: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Publish diagnostics
+        self.client
+            .publish_diagnostics(uri.clone(), diagnostics, None)
+            .await;
+    }
 }
 
 #[tower_lsp::async_trait]
@@ -877,6 +984,9 @@ impl LanguageServer for Backend {
         // Scan the directory for other .amble files
         self.scan_directory(&uri).await;
 
+        // Check for diagnostics
+        self.check_diagnostics(&uri).await;
+
         self.client
             .log_message(MessageType::INFO, format!("Opened document: {}", uri))
             .await;
@@ -887,6 +997,7 @@ impl LanguageServer for Backend {
 
         if let Some(change) = params.content_changes.into_iter().next() {
             self.analyze_document(&uri, &change.text);
+            self.check_diagnostics(&uri).await;
         }
     }
 
@@ -895,6 +1006,9 @@ impl LanguageServer for Backend {
 
         // Re-scan the directory on save
         self.scan_directory(&uri).await;
+
+        // Check for diagnostics after re-scanning
+        self.check_diagnostics(&uri).await;
     }
 
     async fn goto_definition(
