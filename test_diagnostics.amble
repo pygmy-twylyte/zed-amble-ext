@@ -1,0 +1,121 @@
+# Test file for diagnostics - testing undefined reference detection
+
+# VALID DEFINITIONS - These should NOT produce errors
+room test-room-valid {
+    name "Valid Test Room"
+    desc "This room is defined."
+}
+
+item test-item-valid {
+    name "Valid Test Item"
+    desc "This item is defined."
+}
+
+npc test-npc-valid {
+    name "Valid Test NPC"
+    desc "This NPC is defined."
+}
+
+trigger "define-valid-flag" {
+    when enter room test-room-valid
+    {do add flag test-flag-valid}
+}
+
+# REFERENCES TO VALID SYMBOLS - Should NOT produce errors
+room another-valid-room {
+    name "Another Valid Room"
+    desc "References to defined symbols."
+    exit north -> test-room-valid
+}
+
+trigger "valid-references"
+    when enter room test-room-valid{
+    if has flag test-flag-valid {
+        do show ""
+    }
+    if has item test-item-valid
+    if with npc test-npc-valid
+    do msg "All references are valid!"
+}
+
+# UNDEFINED REFERENCES - Should produce ERROR diagnostics with red squiggles
+
+# Undefined room reference
+room room-with-bad-exit {
+    name "Room With Bad Exit"
+    desc "This exit points to an undefined room."
+    exit south -> undefined-room-name
+    overlay if item present invalid_item {
+        text "no such item"
+    }
+    overlay if npc no-such-npc here {
+        normal "normal"
+    }
+}
+
+# Undefined item reference
+trigger undefined-item-trigger {
+    when enter room test-room-valid
+    if has item undefined-item-name
+    do msg "This item doesn't exist!"
+}
+
+# Undefined NPC reference
+trigger undefined-npc-trigger {
+    when enter room test-room-valid
+    if with npc undefined-npc-name
+    do msg "This NPC doesn't exist!"
+}
+
+# Undefined flag reference
+trigger "undefined-flag-trigger"
+    when enter room test-room-valid {
+    if has flag undefined-flag-name
+    do msg "This flag was never added!"
+}
+
+# Multiple undefined references in one trigger
+trigger "multiple-undefined"
+    when enter room undefined-room-xyz
+    if has flag undefined-flag-abc
+    if has item undefined-item-def
+    if with npc undefined-npc-ghi
+    do push player to undefined-room-jkl
+}
+
+# Mix of valid and undefined
+trigger "mixed-references"
+    when enter room test-room-valid
+    if has flag test-flag-valid{}
+    if missing flag undefined-mixed-flag {}
+    if has item undefined-mixed-item {}
+    do msg "Some valid, some not"
+}
+
+# Overlay with undefined references
+room overlay-test {
+    name "Overlay Test"
+    desc "Testing overlays with undefined refs."
+    visited false
+    overlay if has flag undefined-overlay-flag {
+        text "This flag doesn't exist"
+    }
+
+    overlay if item undefined-overlay-item {
+        absent "asdfasf"
+        present "This item doesn't exist"
+    }
+
+    overlay if npc undefined-overlay-npc here {
+        normal "This NPC doesn't exist"
+    }
+    exit north -> north-room
+}
+
+# Goal with undefined references
+goal test-goal {
+    name "Test Goal"
+    desc "Testing goal conditions."
+    start when reached room undefined-goal-room
+    done when has flag undefined-goal-flag
+}

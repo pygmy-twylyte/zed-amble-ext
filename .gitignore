@@ -1,0 +1,34 @@
+# Rust build artifacts
+/target/
+language-server/target/
+language-server/tree-sitter-amble/target/
+**/*.rs.bk
+*.pdb
+
+# Cargo lock files (we keep the one in language-server)
+/Cargo.lock
+
+# Built language server binary
+/bin/amble-lsp
+/bin/amble-lsp.working
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Extension build artifacts
+extension.wasm
+
+# Tree-sitter grammar checkout (built by Zed)
+grammars/amble/
+
+# Zed local data
+.zed/
+
+# All bin contents are build artifacts
+/bin/*
+!/bin/.gitkeep

@@ -2,6 +2,7 @@ name = "Amble"
 grammar = "amble"
 path_suffixes = ["amble"]
 line_comments = ["# "]
+language_servers = ["amble-lsp"]
 autoclose_before = ";:.,=}])>"
 tab_size = 4
 brackets = [

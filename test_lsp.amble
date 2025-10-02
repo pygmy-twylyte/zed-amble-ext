@@ -1,0 +1,70 @@
+# Test file for Amble LSP - Room definitions and references
+
+room test-room-one {
+    name "Test Room One"
+    desc "This is the first test room."
+    visited true
+    exit north -> test-room-four
+    exit south -> test-room-three
+}
+
+room test-room-two {
+    name "Test Room Two"
+    desc "This is the second test room."
+    exit south -> test-room-one
+    exit east -> test-room-four
+}
+
+room test-room-three {
+    name "Test Room Three"
+    desc "This is the third test room."
+    exit north -> test-room-one
+}
+
+room test-room-four {
+    name "Test Room Four"
+    desc "This is the fourth test room."
+    exit west -> test-room-two
+    exit east ->
+}
+
+# Test trigger with room references
+trigger "test-trigger" when always {
+    if has item test_item {
+        do add flag test-flag
+    }
+}
+
+trigger "another-test" when talk to npc test_npc {
+    do show ""
+}
+
+item test_item {
+    name "Item Name"
+    desc "Item description..."
+    portable true
+    location nowhere "noplace"
+}
+
+npc test_npc {
+    name "NPC Name"
+    desc "Npc description..."
+    location nowhere "noplace"
+}
+
+room another-test-room {
+    name "Room Name"
+    desc "Room Description"
+    visited false
+    exit "through the door" -> library
+    overlay if item present test_item {
+        text "test_item present"
+    }
+    overlay if npc test_npc here {
+        normal "test_npc is doing nothing"
+    }
+    overlay if flag some-flag {
+        set "some flag is set"
+        unset "some flag is unset"
+    }
+}
