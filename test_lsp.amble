@@ -25,7 +25,7 @@ room test-room-four {
     name "Test Room Four"
     desc "This is the fourth test room."
     exit west -> test-room-two
-    exit east ->
+    exit east -> test-room-one
 }
 
 # Test trigger with room references
@@ -63,7 +63,7 @@ room another-test-room {
     overlay if npc test_npc here {
         normal "test_npc is doing nothing"
     }
-    overlay if flag some-flag {
+    overlay if flag test-flag {
         set "some flag is set"
         unset "some flag is unset"
     }
@@ -75,9 +75,9 @@ when enter room treasure-room {
         do show "something"
     }
     if any(with npc test_npc, npc in state test-npc-valid happy, npc has item test-npc-valid test-item-valid, player in room test-room-four
-    , container test-item-valid has item lebowski_rug) {
+    , container test-item-valid has item test-item-valid) {
         do set npc active test_npc
-        do replace item test-item-valid with invitation
+        do replace item test-item-valid with test_item
         do replace drop item test-item-valid with test-item-valid
         do add flag another-test-flag
         do reset flag another-test-flag

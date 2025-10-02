@@ -1189,6 +1189,15 @@ mod tests {
         None
     }
 
+    fn position_for_token(source: &str, line: usize, token: &str, offset: usize) -> Position {
+        let line_str = source.lines().nth(line).expect("line missing");
+        let start = line_str.find(token).expect("token missing on line");
+        Position {
+            line: line as u32,
+            character: (start + offset) as u32,
+        }
+    }
+
     #[test]
     fn detects_room_reference_context_in_exits() {
         let source = "room a {\n    exit north -> \n}\n";
@@ -1200,6 +1209,30 @@ mod tests {
             },
         );
         assert_eq!(symbol, Some(SymbolType::Room));
+    }
+
+    #[test]
+    fn detects_item_reference_context_in_conditions() {
+        let source = "trigger \"test-trigger\" when always {\n    if has item test_item {\n        do show \"\"\n    }\n}\n\nitem test_item {\n    name \"Item\"\n}\n";
+        let position = position_for_token(source, 1, "test_item", 2);
+        let symbol = completion_at(source, position);
+        assert_eq!(symbol, Some(SymbolType::Item));
+    }
+
+    #[test]
+    fn detects_npc_reference_context_in_events() {
+        let source = "trigger \"npc-trigger\" when talk to npc test_npc {\n    do show \"\"\n}\n\nnpc test_npc {\n    name \"Npc\"\n}\n";
+        let position = position_for_token(source, 0, "test_npc", 2);
+        let symbol = completion_at(source, position);
+        assert_eq!(symbol, Some(SymbolType::Npc));
+    }
+
+    #[test]
+    fn detects_flag_reference_context_in_actions() {
+        let source = "trigger \"flag-trigger\" when always {\n    if has flag quest_flag {\n        do show \"\"\n    }\n}\n";
+        let position = position_for_token(source, 1, "quest_flag", 2);
+        let symbol = completion_at(source, position);
+        assert_eq!(symbol, Some(SymbolType::Flag));
     }
 
     #[test]
