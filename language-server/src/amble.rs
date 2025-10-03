@@ -659,6 +659,169 @@ impl Backend {
         None
     }
 
+    fn format_document(text: &str) -> String {
+        let mut result = String::with_capacity(text.len());
+        let mut indent_level: usize = 0;
+        let mut in_multiline: Option<&'static str> = None;
+
+        for segment in text.split_inclusive('\n') {
+            let (line, has_newline) = if let Some(stripped) = segment.strip_suffix('\n') {
+                (stripped, true)
+            } else {
+                (segment, false)
+            };
+
+            if in_multiline.is_some() {
+                result.push_str(line.trim_end());
+                if has_newline {
+                    result.push('\n');
+                }
+                Self::update_multiline_state(line, &mut in_multiline);
+                continue;
+            }
+
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                if has_newline {
+                    result.push('\n');
+                }
+                Self::update_multiline_state(line, &mut in_multiline);
+                continue;
+            }
+
+            let trimmed_start = line.trim_start();
+            let closes_block = trimmed_start.starts_with('}');
+            if closes_block {
+                indent_level = indent_level.saturating_sub(1);
+            }
+
+            let normalized = trimmed_start.trim_end();
+            result.push_str(&" ".repeat(indent_level * 4));
+            result.push_str(normalized);
+            if has_newline {
+                result.push('\n');
+            }
+
+            let mut delta = Self::brace_delta(normalized);
+            if closes_block {
+                delta += 1;
+            }
+            indent_level = ((indent_level as isize) + delta).max(0) as usize;
+
+            Self::update_multiline_state(trimmed_start, &mut in_multiline);
+        }
+
+        if !result.ends_with('\n') {
+            result.push('\n');
+        }
+
+        result
+    }
+
+    fn document_range(text: &str) -> Range {
+        let segments: Vec<&str> = text.split('\n').collect();
+        let line_index = segments.len().saturating_sub(1) as u32;
+        let mut last_len = segments
+            .last()
+            .map(|segment| segment.chars().count() as u32)
+            .unwrap_or(0);
+
+        if text.ends_with('\n') {
+            last_len = 0;
+        }
+
+        Range {
+            start: Position {
+                line: 0,
+                character: 0,
+            },
+            end: Position {
+                line: line_index,
+                character: last_len,
+            },
+        }
+    }
+
+    fn update_multiline_state(line: &str, state: &mut Option<&'static str>) {
+        let bytes = line.as_bytes();
+        let mut i = 0;
+        while i + 2 < bytes.len() {
+            if let Some(delim) = state {
+                let target = if *delim == "\"\"\"" {
+                    b"\"\"\""
+                } else {
+                    b"'''"
+                };
+                if bytes[i..].starts_with(target) {
+                    *state = None;
+                    i += 3;
+                    continue;
+                }
+            } else {
+                if bytes[i..].starts_with(b"\"\"\"") {
+                    *state = Some("\"\"\"");
+                    i += 3;
+                    continue;
+                }
+                if bytes[i..].starts_with(b"'''") {
+                    *state = Some("'''");
+                    i += 3;
+                    continue;
+                }
+            }
+            i += 1;
+        }
+    }
+
+    fn brace_delta(line: &str) -> isize {
+        let bytes = line.as_bytes();
+        let mut i = 0;
+        let mut delta: isize = 0;
+        let mut string_delim: Option<u8> = None;
+
+        while i < bytes.len() {
+            let b = bytes[i];
+            if let Some(delim) = string_delim {
+                if b == b'\\' {
+                    if i + 1 < bytes.len() {
+                        i += 2;
+                    } else {
+                        i = bytes.len();
+                    }
+                    continue;
+                }
+                if b == delim {
+                    string_delim = None;
+                }
+                i += 1;
+                continue;
+            } else {
+                if (b == b'"' || b == b'\'')
+                    && i + 2 < bytes.len()
+                    && bytes[i + 1] == b
+                    && bytes[i + 2] == b
+                {
+                    break;
+                }
+                match b {
+                    b'"' | b'\'' => {
+                        string_delim = Some(b);
+                    }
+                    b'{' => {
+                        delta += 1;
+                    }
+                    b'}' => {
+                        delta -= 1;
+                    }
+                    _ => {}
+                }
+                i += 1;
+            }
+        }
+
+        delta
+    }
+
     fn get_symbol_at_position(
         &self,
         uri: &Url,
@@ -1245,6 +1408,20 @@ mod tests {
         let symbol = completion_at(source, position);
         assert_eq!(symbol, None);
     }
+
+    #[test]
+    fn formats_item_block() {
+        let source = "item sample {\n  name \"Sample\"\n  portable true\n}\n";
+        let expected = "item sample {\n    name \"Sample\"\n    portable true\n}\n";
+        assert_eq!(Backend::format_document(source), expected);
+    }
+
+    #[test]
+    fn preserves_multiline_text_blocks() {
+        let source = "item example {\n  text \"\"\"line1\nline2\"\"\"\n}\n";
+        let expected = "item example {\n    text \"\"\"line1\nline2\"\"\"\n}\n";
+        assert_eq!(Backend::format_document(source), expected);
+    }
 }
 
 #[tower_lsp::async_trait]
@@ -1262,6 +1439,7 @@ impl LanguageServer for Backend {
                 definition_provider: Some(OneOf::Left(true)),
                 references_provider: Some(OneOf::Left(true)),
                 completion_provider: Some(CompletionOptions::default()),
+                document_formatting_provider: Some(OneOf::Left(true)),
                 ..Default::default()
             },
         })
@@ -1312,6 +1490,28 @@ impl LanguageServer for Backend {
 
         // Check for diagnostics after re-scanning
         self.check_diagnostics(&uri).await;
+    }
+
+    async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
+        let uri = params.text_document.uri;
+        let uri_str = uri.to_string();
+
+        if let Some(doc) = self.document_map.get(&uri_str) {
+            let current = doc.clone();
+            drop(doc);
+            let formatted = Self::format_document(&current);
+            if formatted == current {
+                return Ok(Some(vec![]));
+            }
+
+            let range = Self::document_range(&current);
+            return Ok(Some(vec![TextEdit {
+                range,
+                new_text: formatted,
+            }]));
+        }
+
+        Ok(None)
     }
 
     async fn goto_definition(
