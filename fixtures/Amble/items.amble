@@ -265,7 +265,7 @@ item lumberjack_axe {
     ability Smash
 }
 
-item flamethrower {
+item arson_aid {
     name "Initech Arson-Aid"
     desc "A small personal flamethrower, for use in home and garden -- just not your own, if you know what's good for you. Instructions for use are labeled on the side."
     portable true
@@ -273,7 +273,7 @@ item flamethrower {
     consumable {
         uses_left 1
         consume_on ability Ignite
-        when_consumed replace current room melted_flamethrower
+        when_consumed replace current room melted_arson_aid
     }
 
     text """Instructions:
@@ -286,7 +286,7 @@ item flamethrower {
     ability Read
 }
 
-item melted_flamethrower {
+item melted_arson_aid {
     name "Metallic Blob"
     desc "An irregular blob of metal and melted plastic that used to be an Initech Arson-Aid. Useless now. You can still just read the last step of the instructions on the side."
     portable true

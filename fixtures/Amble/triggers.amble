@@ -80,7 +80,7 @@ when act cut on item fallen_tree {
 }
 
 trigger "Two-Sheds-Landing: Arson-Aid Used on Tree" only once
-when use item flamethrower on item fallen_tree interaction burn {
+when use item arson_aid on item fallen_tree interaction burn {
     do show "You aim the Arson-Aid and begin to squeeze the trigger when the device erupts into a fireball! Panicking, you throw the whole Arson-Aid into the tree."
 }
 
@@ -877,7 +877,7 @@ when always {
 # ------------------------------------------------------------------------------------------------------------------GLOBAL (NO SPECIFIC LOCATION)
 
 trigger "Global: Arson-Aid Used" only once
-when use item flamethrower ability ignite {
+when use item arson_aid ability ignite {
     do show "The Initech Arson-Aid melts down into an amorphous, hissing blob. As expected."
 }
 
