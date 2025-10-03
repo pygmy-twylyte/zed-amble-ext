@@ -18,6 +18,9 @@ enum SymbolType {
 struct RoomDefinition {
     uri: Url,
     range: Range,
+    name: Option<String>,
+    description: Option<String>,
+    exits: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -30,6 +33,13 @@ struct RoomReference {
 struct ItemDefinition {
     uri: Url,
     range: Range,
+    name: Option<String>,
+    description: Option<String>,
+    portable: Option<bool>,
+    location: Option<String>,
+    container_state: Option<String>,
+    abilities: Vec<String>,
+    requirements: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -42,6 +52,10 @@ struct ItemReference {
 struct NpcDefinition {
     uri: Url,
     range: Range,
+    name: Option<String>,
+    description: Option<String>,
+    location: Option<String>,
+    state: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -54,6 +68,8 @@ struct NpcReference {
 struct FlagDefinition {
     uri: Url,
     range: Range,
+    defined_in: Option<String>,
+    sequence_limit: Option<i64>,
 }
 
 #[derive(Debug, Clone)]
@@ -66,6 +82,7 @@ struct FlagReference {
 struct SetDefinition {
     uri: Url,
     range: Range,
+    rooms: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -221,11 +238,19 @@ impl Backend {
                     },
                 };
 
+                let (name, description, exits) = node
+                    .parent()
+                    .map(|room_node| Self::extract_room_metadata(&room_node, text))
+                    .unwrap_or((None, None, Vec::new()));
+
                 self.room_definitions.insert(
                     room_id.to_string(),
                     RoomDefinition {
                         uri: uri.clone(),
                         range,
+                        name,
+                        description,
+                        exits,
                     },
                 );
             }
@@ -309,11 +334,31 @@ impl Backend {
                     },
                 };
 
+                let (
+                    name,
+                    description,
+                    portable,
+                    location,
+                    container_state,
+                    abilities,
+                    requirements,
+                ) = node
+                    .parent()
+                    .map(|item_node| Self::extract_item_metadata(&item_node, text))
+                    .unwrap_or((None, None, None, None, None, Vec::new(), Vec::new()));
+
                 self.item_definitions.insert(
                     item_id.to_string(),
                     ItemDefinition {
                         uri: uri.clone(),
                         range,
+                        name,
+                        description,
+                        portable,
+                        location,
+                        container_state,
+                        abilities,
+                        requirements,
                     },
                 );
             }
@@ -396,11 +441,20 @@ impl Backend {
                     },
                 };
 
+                let (name, description, location, state) = node
+                    .parent()
+                    .map(|npc_node| Self::extract_npc_metadata(&npc_node, text))
+                    .unwrap_or((None, None, None, None));
+
                 self.npc_definitions.insert(
                     npc_id.to_string(),
                     NpcDefinition {
                         uri: uri.clone(),
                         range,
+                        name,
+                        description,
+                        location,
+                        state,
                     },
                 );
             }
@@ -487,11 +541,18 @@ impl Backend {
                     },
                 };
 
+                let (defined_in, sequence_limit) = node
+                    .parent()
+                    .map(|action_node| Self::extract_flag_metadata(&action_node, text))
+                    .unwrap_or((None, None));
+
                 self.flag_definitions.insert(
                     flag_name.to_string(),
                     FlagDefinition {
                         uri: uri.clone(),
                         range,
+                        defined_in,
+                        sequence_limit,
                     },
                 );
             }
@@ -573,11 +634,17 @@ impl Backend {
                     },
                 };
 
+                let rooms = node
+                    .parent()
+                    .map(|set_node| Self::extract_set_rooms(&set_node, text))
+                    .unwrap_or_default();
+
                 self.set_definitions.insert(
                     set_name.to_string(),
                     SetDefinition {
                         uri: uri.clone(),
                         range,
+                        rooms,
                     },
                 );
             }
@@ -820,6 +887,465 @@ impl Backend {
         }
 
         delta
+    }
+
+    fn slice_text<'a>(text: &'a str, node: &Node) -> &'a str {
+        &text[node.byte_range()]
+    }
+
+    fn named_child_by_kind<'tree>(node: &Node<'tree>, kind: &str) -> Option<Node<'tree>> {
+        let mut cursor = node.walk();
+        for child in node.named_children(&mut cursor) {
+            if child.kind() == kind {
+                return Some(child);
+            }
+        }
+        None
+    }
+
+    fn normalize_string_literal(literal: &str) -> String {
+        if literal.starts_with("\"\"\"") && literal.ends_with("\"\"\"") && literal.len() >= 6 {
+            literal[3..literal.len() - 3].to_string()
+        } else if literal.starts_with('"') && literal.ends_with('"') {
+            serde_json::from_str::<String>(literal)
+                .unwrap_or_else(|_| literal[1..literal.len() - 1].to_string())
+        } else if literal.starts_with('\'') && literal.ends_with('\'') && literal.len() >= 2 {
+            literal[1..literal.len() - 1].to_string()
+        } else if literal.starts_with("'''") && literal.ends_with("'''") && literal.len() >= 6 {
+            literal[3..literal.len() - 3].to_string()
+        } else {
+            literal.to_string()
+        }
+    }
+
+    fn extract_room_metadata(
+        room_node: &Node,
+        text: &str,
+    ) -> (Option<String>, Option<String>, Vec<String>) {
+        let mut name = None;
+        let mut description = None;
+        let mut exits = Vec::new();
+
+        if let Some(block) = Self::named_child_by_kind(room_node, "room_block") {
+            let mut cursor = block.walk();
+            for child in block.named_children(&mut cursor) {
+                match child.kind() {
+                    "room_name" => {
+                        if let Some(name_node) = child.child_by_field_name("name") {
+                            let raw = Self::slice_text(text, &name_node);
+                            name = Some(Self::normalize_string_literal(raw));
+                        }
+                    }
+                    "room_desc" => {
+                        if let Some(desc_node) = child.child_by_field_name("description") {
+                            let raw = Self::slice_text(text, &desc_node);
+                            description = Some(Self::normalize_string_literal(raw));
+                        }
+                    }
+                    "room_exit" => {
+                        if let Some(dest) = child.child_by_field_name("dest") {
+                            exits.push(Self::slice_text(text, &dest).trim().to_string());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        (name, description, exits)
+    }
+
+    fn format_location_node(location_node: &Node, text: &str) -> String {
+        if let Some(room) = Self::named_child_by_kind(location_node, "room_id")
+            .or_else(|| Self::named_child_by_kind(location_node, "_room_ref"))
+        {
+            return format!(
+                "room {}",
+                Self::sanitize_markdown(Self::slice_text(text, &room).trim())
+            );
+        }
+        if let Some(chest) = Self::named_child_by_kind(location_node, "chest_id") {
+            return format!(
+                "chest {}",
+                Self::sanitize_markdown(Self::slice_text(text, &chest).trim())
+            );
+        }
+        if let Some(npc) = Self::named_child_by_kind(location_node, "npc_id") {
+            return format!(
+                "npc {}",
+                Self::sanitize_markdown(Self::slice_text(text, &npc).trim())
+            );
+        }
+        if let Some(spawn_note) = Self::named_child_by_kind(location_node, "spawn_note") {
+            return format!(
+                "nowhere {}",
+                Self::sanitize_markdown(&Self::normalize_string_literal(Self::slice_text(
+                    text,
+                    &spawn_note,
+                )))
+            );
+        }
+
+        let raw = Self::slice_text(text, location_node).trim();
+        Self::sanitize_markdown(
+            raw.strip_prefix("location")
+                .map(|rest| rest.trim())
+                .unwrap_or(raw),
+        )
+    }
+
+    fn extract_item_metadata(
+        item_node: &Node,
+        text: &str,
+    ) -> (
+        Option<String>,
+        Option<String>,
+        Option<bool>,
+        Option<String>,
+        Option<String>,
+        Vec<String>,
+        Vec<String>,
+    ) {
+        let mut name = None;
+        let mut description = None;
+        let mut portable = None;
+        let mut location = None;
+        let mut container_state = None;
+        let mut abilities = Vec::new();
+        let mut requirements = Vec::new();
+
+        if let Some(block) = Self::named_child_by_kind(item_node, "item_block") {
+            let mut cursor = block.walk();
+            for child in block.named_children(&mut cursor) {
+                match child.kind() {
+                    "item_name_stmt" => {
+                        if let Some(name_node) = child.child_by_field_name("item_name") {
+                            name = Some(Self::normalize_string_literal(Self::slice_text(
+                                text, &name_node,
+                            )));
+                        }
+                    }
+                    "item_desc_stmt" => {
+                        if let Some(desc_node) = child.child_by_field_name("item_description") {
+                            description = Some(Self::normalize_string_literal(Self::slice_text(
+                                text, &desc_node,
+                            )));
+                        }
+                    }
+                    "item_portable_stmt" => {
+                        if let Some(port_node) = child.child_by_field_name("portable") {
+                            portable = Some(Self::slice_text(text, &port_node).trim() == "true");
+                        }
+                    }
+                    "item_loc_stmt" => {
+                        if let Some(loc_node) = Self::named_child_by_kind(&child, "item_location") {
+                            location = Some(Self::format_location_node(&loc_node, text));
+                        } else {
+                            let raw = Self::slice_text(text, &child).trim();
+                            location = Some(Self::sanitize_markdown(
+                                raw.strip_prefix("location")
+                                    .map(|rest| rest.trim())
+                                    .unwrap_or(raw),
+                            ));
+                        }
+                    }
+                    "item_container_stmt" => {
+                        if let Some(state_node) =
+                            Self::named_child_by_kind(&child, "container_state")
+                        {
+                            container_state =
+                                Some(Self::slice_text(text, &state_node).trim().to_string());
+                        }
+                    }
+                    "item_ability_stmt" => {
+                        abilities.push(Self::sanitize_markdown(
+                            Self::slice_text(text, &child).trim(),
+                        ));
+                    }
+                    "item_requires_stmt" => {
+                        requirements.push(Self::sanitize_markdown(
+                            Self::slice_text(text, &child).trim(),
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        (
+            name,
+            description,
+            portable,
+            location,
+            container_state,
+            abilities,
+            requirements,
+        )
+    }
+
+    fn extract_npc_metadata(
+        npc_node: &Node,
+        text: &str,
+    ) -> (
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    ) {
+        let mut name = None;
+        let mut description = None;
+        let mut location = None;
+        let mut state = None;
+
+        if let Some(block) = Self::named_child_by_kind(npc_node, "npc_block") {
+            let mut cursor = block.walk();
+            for child in block.named_children(&mut cursor) {
+                match child.kind() {
+                    "npc_name_stmt" => {
+                        if let Some(name_node) = child.child_by_field_name("npc_name") {
+                            name = Some(Self::normalize_string_literal(Self::slice_text(
+                                text, &name_node,
+                            )));
+                        }
+                    }
+                    "npc_desc_stmt" => {
+                        if let Some(desc_node) = child.child_by_field_name("npc_description") {
+                            description = Some(Self::normalize_string_literal(Self::slice_text(
+                                text, &desc_node,
+                            )));
+                        }
+                    }
+                    "npc_loc_stmt" => {
+                        if let Some(loc_node) = Self::named_child_by_kind(&child, "npc_location") {
+                            location = Some(Self::format_location_node(&loc_node, text));
+                        } else {
+                            let raw = Self::slice_text(text, &child).trim();
+                            location = Some(Self::sanitize_markdown(
+                                raw.strip_prefix("location")
+                                    .map(|rest| rest.trim())
+                                    .unwrap_or(raw),
+                            ));
+                        }
+                    }
+                    "npc_state_stmt" => {
+                        if let Some(state_node) = Self::named_child_by_kind(&child, "npc_state") {
+                            state = Some(Self::slice_text(text, &state_node).trim().to_string());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        (name, description, location, state)
+    }
+
+    fn find_trigger_name(node: Node, text: &str) -> Option<String> {
+        let mut current = node;
+        while let Some(parent) = current.parent() {
+            if parent.kind() == "trigger_def" {
+                if let Some(name_node) = parent.child_by_field_name("name") {
+                    return Some(Self::normalize_string_literal(Self::slice_text(
+                        text, &name_node,
+                    )));
+                }
+                break;
+            }
+            current = parent;
+        }
+        None
+    }
+
+    fn extract_flag_metadata(action_node: &Node, text: &str) -> (Option<String>, Option<i64>) {
+        let defined_in = Self::find_trigger_name(*action_node, text);
+        let limit = if action_node.kind() == "action_add_seq" {
+            let mut cursor = action_node.walk();
+            let mut result = None;
+            for child in action_node.named_children(&mut cursor) {
+                if child.kind() == "number" {
+                    if let Ok(value) = Self::slice_text(text, &child).trim().parse::<i64>() {
+                        result = Some(value);
+                    }
+                }
+            }
+            result
+        } else {
+            None
+        };
+        (defined_in, limit)
+    }
+
+    fn extract_set_rooms(set_node: &Node, text: &str) -> Vec<String> {
+        if let Some(list_node) = Self::named_child_by_kind(set_node, "set_list")
+            .or_else(|| Self::named_child_by_kind(set_node, "room_list"))
+        {
+            let mut cursor = list_node.walk();
+            let mut rooms = Vec::new();
+            for child in list_node.named_children(&mut cursor) {
+                match child.kind() {
+                    "room_id" | "_room_ref" => rooms.push(Self::sanitize_markdown(
+                        Self::slice_text(text, &child).trim(),
+                    )),
+                    _ => {}
+                }
+            }
+            rooms
+        } else {
+            Vec::new()
+        }
+    }
+
+    fn sanitize_markdown(value: &str) -> String {
+        value.trim().replace('|', "\\|").replace('\n', "<br>")
+    }
+
+    fn format_room_hover(id: &str, def: &RoomDefinition) -> String {
+        let mut lines = vec![format!("**Room:** {}", Self::sanitize_markdown(id))];
+        lines.push(format!(
+            "- Name: {}",
+            def.name
+                .as_deref()
+                .map(Self::sanitize_markdown)
+                .unwrap_or_else(|| "(missing)".to_string())
+        ));
+        lines.push(format!(
+            "- Description: {}",
+            def.description
+                .as_deref()
+                .map(Self::sanitize_markdown)
+                .unwrap_or_else(|| "(missing)".to_string())
+        ));
+        lines.push(format!(
+            "- Exits: {}",
+            if def.exits.is_empty() {
+                "(none)".to_string()
+            } else {
+                def.exits
+                    .iter()
+                    .map(|exit| Self::sanitize_markdown(exit))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            }
+        ));
+        lines.join("\n")
+    }
+
+    fn format_item_hover(id: &str, def: &ItemDefinition) -> String {
+        let mut lines = vec![format!("**Item:** {}", Self::sanitize_markdown(id))];
+        lines.push(format!(
+            "- Name: {}",
+            def.name
+                .as_deref()
+                .map(Self::sanitize_markdown)
+                .unwrap_or_else(|| "(missing)".to_string())
+        ));
+        lines.push(format!(
+            "- Description: {}",
+            def.description
+                .as_deref()
+                .map(Self::sanitize_markdown)
+                .unwrap_or_else(|| "(missing)".to_string())
+        ));
+        lines.push(format!(
+            "- Portable: {}",
+            def.portable
+                .map(|p| if p { "true" } else { "false" }.to_string())
+                .unwrap_or_else(|| "(none)".to_string())
+        ));
+        lines.push(format!(
+            "- Location: {}",
+            def.location
+                .as_deref()
+                .map(Self::sanitize_markdown)
+                .unwrap_or_else(|| "(missing)".to_string())
+        ));
+        lines.push(format!(
+            "- Container state: {}",
+            def.container_state
+                .as_deref()
+                .map(Self::sanitize_markdown)
+                .unwrap_or_else(|| "(none)".to_string())
+        ));
+        lines.push(format!(
+            "- Abilities: {}",
+            if def.abilities.is_empty() {
+                "(none)".to_string()
+            } else {
+                def.abilities.join(", ")
+            }
+        ));
+        lines.push(format!(
+            "- Requirements: {}",
+            if def.requirements.is_empty() {
+                "(none)".to_string()
+            } else {
+                def.requirements.join(", ")
+            }
+        ));
+        lines.join("\n")
+    }
+
+    fn format_npc_hover(id: &str, def: &NpcDefinition) -> String {
+        let mut lines = vec![format!("**NPC:** {}", Self::sanitize_markdown(id))];
+        lines.push(format!(
+            "- Name: {}",
+            def.name
+                .as_deref()
+                .map(Self::sanitize_markdown)
+                .unwrap_or_else(|| "(missing)".to_string())
+        ));
+        lines.push(format!(
+            "- Description: {}",
+            def.description
+                .as_deref()
+                .map(Self::sanitize_markdown)
+                .unwrap_or_else(|| "(missing)".to_string())
+        ));
+        lines.push(format!(
+            "- Location: {}",
+            def.location
+                .as_deref()
+                .map(Self::sanitize_markdown)
+                .unwrap_or_else(|| "(missing)".to_string())
+        ));
+        lines.push(format!(
+            "- State: {}",
+            def.state
+                .as_deref()
+                .map(Self::sanitize_markdown)
+                .unwrap_or_else(|| "(none)".to_string())
+        ));
+        lines.join("\n")
+    }
+
+    fn format_flag_hover(id: &str, def: &FlagDefinition) -> String {
+        let mut lines = vec![format!("**Flag:** {}", Self::sanitize_markdown(id))];
+        if let Some(trigger) = &def.defined_in {
+            lines.push(format!(
+                "- Defined in trigger: {}",
+                Self::sanitize_markdown(trigger)
+            ));
+        }
+        if let Some(limit) = def.sequence_limit {
+            lines.push(format!("- Sequence limit: {}", limit));
+        }
+        if lines.len() == 1 {
+            lines.push("- Defined in trigger: (unknown)".to_string());
+        }
+        lines.join("\n")
+    }
+
+    fn format_set_hover(id: &str, def: &SetDefinition) -> String {
+        let mut lines = vec![format!("**Set:** {}", Self::sanitize_markdown(id))];
+        lines.push(format!(
+            "- Rooms: {}",
+            if def.rooms.is_empty() {
+                "(none)".to_string()
+            } else {
+                def.rooms.join(", ")
+            }
+        ));
+        lines.join("\n")
     }
 
     fn get_symbol_at_position(
@@ -1422,6 +1948,22 @@ mod tests {
         let expected = "item example {\n    text \"\"\"line1\nline2\"\"\"\n}\n";
         assert_eq!(Backend::format_document(source), expected);
     }
+
+    #[test]
+    fn formats_room_hover_markdown() {
+        let def = RoomDefinition {
+            uri: Url::parse("file:///tmp/test.amble").unwrap(),
+            range: Range::default(),
+            name: Some("Test Room".into()),
+            description: Some("A description".into()),
+            exits: vec!["north-hall".into(), "south-porch".into()],
+        };
+
+        let hover = Backend::format_room_hover("test-room", &def);
+        assert!(hover.contains("**Room:** test-room"));
+        assert!(hover.contains("Test Room"));
+        assert!(hover.contains("north-hall"));
+    }
 }
 
 #[tower_lsp::async_trait]
@@ -1439,6 +1981,7 @@ impl LanguageServer for Backend {
                 definition_provider: Some(OneOf::Left(true)),
                 references_provider: Some(OneOf::Left(true)),
                 completion_provider: Some(CompletionOptions::default()),
+                hover_provider: Some(HoverProviderCapability::Simple(true)),
                 document_formatting_provider: Some(OneOf::Left(true)),
                 ..Default::default()
             },
@@ -1509,6 +2052,48 @@ impl LanguageServer for Backend {
                 range,
                 new_text: formatted,
             }]));
+        }
+
+        Ok(None)
+    }
+
+    async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
+        let uri = params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+
+        if let Some((symbol_type, id)) = self.get_symbol_at_position(&uri, position) {
+            let markdown = match symbol_type {
+                SymbolType::Room => self
+                    .room_definitions
+                    .get(&id)
+                    .map(|def| Self::format_room_hover(&id, &def)),
+                SymbolType::Item => self
+                    .item_definitions
+                    .get(&id)
+                    .map(|def| Self::format_item_hover(&id, &def)),
+                SymbolType::Npc => self
+                    .npc_definitions
+                    .get(&id)
+                    .map(|def| Self::format_npc_hover(&id, &def)),
+                SymbolType::Flag => self
+                    .flag_definitions
+                    .get(&id)
+                    .map(|def| Self::format_flag_hover(&id, &def)),
+                SymbolType::Set => self
+                    .set_definitions
+                    .get(&id)
+                    .map(|def| Self::format_set_hover(&id, &def)),
+            };
+
+            if let Some(value) = markdown {
+                return Ok(Some(Hover {
+                    contents: HoverContents::Markup(MarkupContent {
+                        kind: MarkupKind::Markdown,
+                        value,
+                    }),
+                    range: None,
+                }));
+            }
         }
 
         Ok(None)

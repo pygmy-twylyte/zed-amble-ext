@@ -896,6 +896,7 @@ when take item vogon_poetry_book
 }
 
 trigger "Global: Drop Vogon Poetry"
+note "nausea only subsides with drop IF player didn't read it first or if the EMH cured them"
 when drop item vogon_poetry_book
 {
     if any(missing flag read-vogon-poetry, has flag cured-vogon-poetry) {
