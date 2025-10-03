@@ -1,5 +1,5 @@
 use dashmap::DashMap;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
@@ -1266,21 +1266,21 @@ impl Backend {
                 .map(Self::sanitize_markdown)
                 .unwrap_or_else(|| "(none)".to_string())
         ));
-        lines.push(format!(
-            "- Abilities: {}",
-            if def.abilities.is_empty() {
+        let format_list = |values: &[String]| -> String {
+            if values.is_empty() {
                 "(none)".to_string()
             } else {
-                def.abilities.join(", ")
+                values
+                    .iter()
+                    .map(|value| Self::sanitize_markdown(value))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             }
-        ));
+        };
+        lines.push(format!("- Abilities: {}", format_list(&def.abilities)));
         lines.push(format!(
             "- Requirements: {}",
-            if def.requirements.is_empty() {
-                "(none)".to_string()
-            } else {
-                def.requirements.join(", ")
-            }
+            format_list(&def.requirements)
         ));
         lines.join("\n")
     }
@@ -1346,6 +1346,77 @@ impl Backend {
             }
         ));
         lines.join("\n")
+    }
+
+    fn collect_rename_edits(
+        &self,
+        symbol_type: SymbolType,
+        id: &str,
+        new_name: &str,
+    ) -> HashMap<Url, Vec<TextEdit>> {
+        let mut edits: HashMap<Url, Vec<TextEdit>> = HashMap::new();
+
+        let mut push_edit = |url: &Url, range: &Range| {
+            edits.entry(url.clone()).or_default().push(TextEdit {
+                range: range.clone(),
+                new_text: new_name.to_string(),
+            });
+        };
+
+        match symbol_type {
+            SymbolType::Room => {
+                if let Some(def) = self.room_definitions.get(id) {
+                    push_edit(&def.uri, &def.range);
+                }
+                if let Some(refs) = self.room_references.get(id) {
+                    for reference in refs.iter() {
+                        push_edit(&reference.uri, &reference.range);
+                    }
+                }
+            }
+            SymbolType::Item => {
+                if let Some(def) = self.item_definitions.get(id) {
+                    push_edit(&def.uri, &def.range);
+                }
+                if let Some(refs) = self.item_references.get(id) {
+                    for reference in refs.iter() {
+                        push_edit(&reference.uri, &reference.range);
+                    }
+                }
+            }
+            SymbolType::Npc => {
+                if let Some(def) = self.npc_definitions.get(id) {
+                    push_edit(&def.uri, &def.range);
+                }
+                if let Some(refs) = self.npc_references.get(id) {
+                    for reference in refs.iter() {
+                        push_edit(&reference.uri, &reference.range);
+                    }
+                }
+            }
+            SymbolType::Flag => {
+                if let Some(def) = self.flag_definitions.get(id) {
+                    push_edit(&def.uri, &def.range);
+                }
+                if let Some(refs) = self.flag_references.get(id) {
+                    for reference in refs.iter() {
+                        push_edit(&reference.uri, &reference.range);
+                    }
+                }
+            }
+            SymbolType::Set => {
+                if let Some(def) = self.set_definitions.get(id) {
+                    push_edit(&def.uri, &def.range);
+                }
+                if let Some(refs) = self.set_references.get(id) {
+                    for reference in refs.iter() {
+                        push_edit(&reference.uri, &reference.range);
+                    }
+                }
+            }
+        }
+
+        edits
     }
 
     fn get_symbol_at_position(
@@ -1964,6 +2035,25 @@ mod tests {
         assert!(hover.contains("Test Room"));
         assert!(hover.contains("north-hall"));
     }
+
+    #[test]
+    fn formats_item_hover_lists_abilities() {
+        let def = ItemDefinition {
+            uri: Url::parse("file:///tmp/test.amble").unwrap(),
+            range: Range::default(),
+            name: Some("Widget".into()),
+            description: Some("Useful widget".into()),
+            portable: Some(true),
+            location: Some("room lab".into()),
+            container_state: Some("closed".into()),
+            abilities: vec!["ability Unlock".into()],
+            requirements: vec!["requires ability Use to interact".into()],
+        };
+
+        let hover = Backend::format_item_hover("widget", &def);
+        assert!(hover.contains("Abilities: ability Unlock"));
+        assert!(hover.contains("Requirements: requires ability Use to interact"));
+    }
 }
 
 #[tower_lsp::async_trait]
@@ -1983,6 +2073,7 @@ impl LanguageServer for Backend {
                 completion_provider: Some(CompletionOptions::default()),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 document_formatting_provider: Some(OneOf::Left(true)),
+                rename_provider: Some(OneOf::Left(true)),
                 ..Default::default()
             },
         })
@@ -2094,6 +2185,29 @@ impl LanguageServer for Backend {
                     range: None,
                 }));
             }
+        }
+
+        Ok(None)
+    }
+
+    async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
+        let uri = params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+        let new_name = params.new_name;
+
+        if new_name.is_empty() {
+            return Ok(None);
+        }
+
+        if let Some((symbol_type, id)) = self.get_symbol_at_position(&uri, position) {
+            let edits = self.collect_rename_edits(symbol_type, &id, &new_name);
+            if edits.is_empty() {
+                return Ok(Some(WorkspaceEdit::default()));
+            }
+            return Ok(Some(WorkspaceEdit {
+                changes: Some(edits),
+                ..WorkspaceEdit::default()
+            }));
         }
 
         Ok(None)
