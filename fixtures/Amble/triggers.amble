@@ -441,7 +441,7 @@ when enter room lift-bank-main {
 
 trigger "Portal-Room: Gun Opened" only once
 when open item portal_gun {
-        do add flag portal-gun-opened
+    do add flag portal-gun-opened
 }
 
 
