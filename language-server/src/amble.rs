@@ -4,6 +4,7 @@ use std::sync::Arc;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
+use walkdir::WalkDir;
 use tree_sitter::{Node, Parser, Query, QueryCursor, StreamingIterator};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -146,20 +147,26 @@ impl Backend {
     async fn scan_directory(&self, uri: &Url) {
         if let Ok(path) = uri.to_file_path() {
             if let Some(dir) = path.parent() {
-                if let Ok(entries) = std::fs::read_dir(dir) {
-                    for entry in entries.flatten() {
-                        let path = entry.path();
-                        if path.extension().and_then(|s| s.to_str()) == Some("amble") {
-                            if let Ok(uri) = Url::from_file_path(&path) {
-                                let uri_str = uri.to_string();
-                                // Skip if already analyzed (e.g., from did_open)
-                                if self.document_map.contains_key(&uri_str) {
-                                    continue;
-                                }
-                                if let Ok(content) = std::fs::read_to_string(&path) {
-                                    self.analyze_document(&uri, &content);
-                                }
-                            }
+                for entry in WalkDir::new(dir)
+                    .follow_links(false)
+                    .into_iter()
+                    .filter_map(|entry| entry.ok())
+                {
+                    if !entry.file_type().is_file() {
+                        continue;
+                    }
+                    let path = entry.into_path();
+                    if path.extension().and_then(|s| s.to_str()) != Some("amble") {
+                        continue;
+                    }
+                    if let Ok(uri) = Url::from_file_path(&path) {
+                        let uri_str = uri.to_string();
+                        // Skip if already analyzed (e.g., from did_open)
+                        if self.document_map.contains_key(&uri_str) {
+                            continue;
+                        }
+                        if let Ok(content) = std::fs::read_to_string(&path) {
+                            self.analyze_document(&uri, &content);
                         }
                     }
                 }

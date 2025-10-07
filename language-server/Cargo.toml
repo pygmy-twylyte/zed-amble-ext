@@ -16,3 +16,4 @@ dashmap = "5.5"
 tree-sitter = "0.25"
 tree-sitter-amble = { path = "tree-sitter-amble" }
 parking_lot = "0.12"
+walkdir = "2.5"
