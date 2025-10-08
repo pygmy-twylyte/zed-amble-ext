@@ -1,5 +1,6 @@
 use dashmap::DashMap;
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::Arc;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
@@ -116,6 +117,8 @@ struct Backend {
     set_references: Arc<DashMap<String, Vec<SetReference>>>,
     // Map from URI -> document content
     document_map: Arc<DashMap<String, String>>,
+    // Workspace roots provided by the editor
+    workspace_roots: Arc<parking_lot::RwLock<Vec<PathBuf>>>,
     // Tree-sitter parser
     parser: Arc<parking_lot::Mutex<Parser>>,
 }
@@ -140,34 +143,104 @@ impl Backend {
             set_definitions: Arc::new(DashMap::new()),
             set_references: Arc::new(DashMap::new()),
             document_map: Arc::new(DashMap::new()),
+            workspace_roots: Arc::new(parking_lot::RwLock::new(Vec::new())),
             parser: Arc::new(parking_lot::Mutex::new(parser)),
         }
     }
 
+    fn update_workspace_roots(&self, params: &InitializeParams) {
+        let mut roots = self.workspace_roots.write();
+        roots.clear();
+
+        if let Some(root_uri) = params.root_uri.as_ref() {
+            if let Ok(path) = root_uri.to_file_path() {
+                if !roots.iter().any(|existing| existing == &path) {
+                    roots.push(path);
+                }
+            }
+        }
+
+        #[allow(deprecated)]
+        if let Some(root_path) = params.root_path.as_ref() {
+            if !root_path.is_empty() {
+                let path = PathBuf::from(root_path);
+                if !roots.iter().any(|existing| existing == &path) {
+                    roots.push(path);
+                }
+            }
+        }
+
+        if let Some(folders) = params.workspace_folders.as_ref() {
+            for folder in folders {
+                if let Ok(path) = folder.uri.to_file_path() {
+                    if !roots.iter().any(|existing| existing == &path) {
+                        roots.push(path);
+                    }
+                }
+            }
+        }
+    }
+
     async fn scan_directory(&self, uri: &Url) {
-        if let Ok(path) = uri.to_file_path() {
-            if let Some(dir) = path.parent() {
-                for entry in WalkDir::new(dir)
-                    .follow_links(false)
-                    .into_iter()
-                    .filter_map(|entry| entry.ok())
-                {
-                    if !entry.file_type().is_file() {
+        let file_path = match uri.to_file_path() {
+            Ok(path) => path,
+            Err(_) => return,
+        };
+
+        let directories: Vec<PathBuf> = {
+            let roots = self.workspace_roots.read();
+            if roots.is_empty() {
+                file_path
+                    .parent()
+                    .map(|dir| vec![dir.to_path_buf()])
+                    .unwrap_or_default()
+            } else {
+                let mut dirs = Vec::new();
+                for root in roots.iter() {
+                    if file_path.starts_with(root) {
+                        dirs.push(root.clone());
+                    }
+                }
+
+                if dirs.is_empty() {
+                    dirs.extend(roots.iter().cloned());
+                }
+
+                dirs
+            }
+        };
+
+        let mut visited_dirs = HashSet::new();
+
+        for dir in directories {
+            if !visited_dirs.insert(dir.clone()) {
+                continue;
+            }
+
+            if !dir.exists() {
+                continue;
+            }
+
+            for entry in WalkDir::new(&dir)
+                .follow_links(false)
+                .into_iter()
+                .filter_map(|entry| entry.ok())
+            {
+                if !entry.file_type().is_file() {
+                    continue;
+                }
+                let path = entry.into_path();
+                if path.extension().and_then(|s| s.to_str()) != Some("amble") {
+                    continue;
+                }
+                if let Ok(uri) = Url::from_file_path(&path) {
+                    let uri_str = uri.to_string();
+                    // Skip if already analyzed (e.g., from did_open)
+                    if self.document_map.contains_key(&uri_str) {
                         continue;
                     }
-                    let path = entry.into_path();
-                    if path.extension().and_then(|s| s.to_str()) != Some("amble") {
-                        continue;
-                    }
-                    if let Ok(uri) = Url::from_file_path(&path) {
-                        let uri_str = uri.to_string();
-                        // Skip if already analyzed (e.g., from did_open)
-                        if self.document_map.contains_key(&uri_str) {
-                            continue;
-                        }
-                        if let Ok(content) = std::fs::read_to_string(&path) {
-                            self.analyze_document(&uri, &content);
-                        }
+                    if let Ok(content) = std::fs::read_to_string(&path) {
+                        self.analyze_document(&uri, &content);
                     }
                 }
             }
@@ -2065,7 +2138,9 @@ mod tests {
 
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
-    async fn initialize(&self, _params: InitializeParams) -> Result<InitializeResult> {
+    async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+        self.update_workspace_roots(&params);
+
         Ok(InitializeResult {
             server_info: Some(ServerInfo {
                 name: "amble-lsp".to_string(),
