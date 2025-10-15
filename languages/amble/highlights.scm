@@ -15,6 +15,7 @@
 
 ; Things with defined variants
 (item_ability) @variant
+(ability_name) @variant
 (item_interaction) @variant
 (custom_state) @variant
 (npc_state_builtin) @constant
@@ -30,6 +31,8 @@
 (quote) @string
 (npc_dialogue) @string
 (spinner_text) @string
+(string) @string
+
 
 
 ; Comments / notes
@@ -80,6 +83,7 @@
 (_when_event) @property
 (_trigger_cond_atom) @constructor
 (_action_type) @function
+(off_or_state "off" @comment)
 
 ; Item Highlights
 (item_def "item" @keyword)
