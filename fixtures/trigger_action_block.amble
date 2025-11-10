@@ -13,7 +13,7 @@ when enter room main-lobby
     do schedule in 3 if player in room main-lobby onFalse cancel
     note "lobby loitering reminder" {
         do show """A chime echoes through the lobby. "Candidates: Please do not loiter in the lobby," intones an overhead voice."""
-        do award points -1
+        do award points -1 reason "You hung around in the lobby like a skid. Pitter patter!"
     }
 }
 
@@ -27,7 +27,7 @@ when use item coffee_machine ability turnOn
         do show "♪ BEEP BEEP BEEP! ♪ The coffee machine chimes cheerfully. The rich aroma of freshly brewed coffee fills the air."
         do spawn item hot_coffee into room lounge
         do add flag coffee-brewed
-        do award points 2
+        do award points 2 reason "Brewed a nice cuppa joe."
     }
 }
 
@@ -37,7 +37,7 @@ when enter room test_room {
     do show "Something else"
     do schedule in 5 if missing item big-stick note "stick reminder" {
         if any(has flag went-home, all(has flag some-flag, with npc fred-flintsone)) {
-            do award points -32
+            do award points -32 reason "Said so."
         }
     }
 }

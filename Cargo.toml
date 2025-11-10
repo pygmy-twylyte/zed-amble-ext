@@ -1,6 +1,6 @@
 [package]
 name = "amble-extension"
-version = "0.17.2"
+version = "0.19.0"
 edition = "2021"
 
 [lib]
