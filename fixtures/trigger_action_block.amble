@@ -24,7 +24,7 @@ when use item coffee_machine ability turnOn
     do set item description coffee_machine "A single serve drip coffee machine, which apparently takes quite a while to finish brewing a cup one drip at a time..."
     do schedule in 3 note "coffee done brewing" {
         do set item description coffee_machine "A single serve, drip coffee maker. The brew cycle is complete and the grounds have already been used."
-        do show "♪ BEEP BEEP BEEP! ♪ The coffee machine chimes cheerfully. The rich aroma of freshly brewed coffee fills the air."
+        do priority -10 show "♪ BEEP BEEP BEEP! ♪ The coffee machine chimes cheerfully. The rich aroma of freshly brewed coffee fills the air."
         do spawn item hot_coffee into room lounge
         do add flag coffee-brewed
         do award points 2 reason "Brewed a nice cuppa joe."
