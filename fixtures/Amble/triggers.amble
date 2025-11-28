@@ -302,14 +302,22 @@ when enter room patio {
 
 trigger "Office: Receptionist Unhelpful if No Pass"
 when always {
-    if all(with npc b_a_receptionist, missing flag got-visitor-pass, missing flag got-elevator-keycard) {
+    if all(
+        with npc b_a_receptionist,
+        missing flag got-visitor-pass,
+        missing flag got-elevator-keycard,
+    ) {
         do set npc state b_a_receptionist normal
     }
 }
 
 trigger "Office: Receptionist Helpful Once Pass Acquired"
 when always {
-    if all(with npc b_a_receptionist, has flag got-visitor-pass, missing flag got-elevator-keycard) {
+    if all(
+        with npc b_a_receptionist,
+        has flag got-visitor-pass,
+        missing flag got-elevator-keycard,
+    ) {
         do set npc state b_a_receptionist happy
     }
 }
@@ -319,7 +327,7 @@ when give item invitation to npc b_a_receptionist {
     do add flag got-visitor-pass
     do despawn item invitation
     do spawn item visitor_pass in inventory
-    do award points 5
+    do award points 5 reason "got visitor pass"
     do set npc state b_a_receptionist happy
     do show "The robotic receptionist initially glances at you with the disdain of someone who spends all day waiting on people who are waiting on someone else, but her demeanor and even appearance immediately become pleasant when she sees the invitation in your hand. She deftly takes it from you, scrutinizes it intently, and slips it into a desktop document vaporizer.\n\nShe then hands you a laminated card on a lanyard. It appears blank, yet also appears to show a variety of credentials at the same time."
     do npc says b_a_receptionist "Here is your visitor pass. Much of the facility will be inaccessible without it, so treat it like a second towel."
@@ -342,7 +350,7 @@ when insert item vogon_poetry_book into item poetry_performer {
 
 trigger "Office: Gifted Lost and Found Key" only once
 when enter room b-a-office {
-    if all(has flag got-elevator-keycard, with npc b_a_receptionist) {
+    if all( has flag got-elevator-keycard, with npc b_a_receptionist ) {
         do give item lost_and_found_key to player from npc b_a_receptionist
         do show "Seeing you return with the keycard, the receptionist looks around warily and slips something into your hand, then looks directly at the lost and found box."
         do npc says b_a_receptionist "Finally! A Candidate bright enough to get to that keycard. I guess I lost the pool. Who'd have thought it'd be a primate?"
@@ -359,14 +367,14 @@ when unlock item lost_and_found_box {
 
 trigger "Office: Receptionist Comment (Read Poetry)" only once
 when always {
-    if all(has flag read-vogon-poetry, has flag status:nauseated) {
+    if all( has flag read-vogon-poetry, has flag status:nauseated ) {
         do npc says emh "You look ill. You didn't read that poetry book, did you? That won't look good on your evaluation. The Emergency Medical Hologram on level AA-3 may be able to help."
     }
 }
 
 trigger "Office: Receptionist Comment (Broken Emitter Found)"
 when enter room b-a-office {
-    if all(with npc b_a_receptionist, has flag mobilize-emh#0) {
+    if all( with npc b_a_receptionist, has flag mobilize-emh#0 ) {
         do npc says b_a_receptionist "I hear the EMH lost his emitter again. One has been turned into the Lost and Found, but I'm not sure how much good it will do you. Or him."
     }
 }
@@ -589,7 +597,11 @@ when act sharpen on item dull_longsword {
 
 trigger "Sublevel-1-Entrance: Black Knight Kicks Player After Sword Taken"
 when always {
-    if all(with npc black_knight, npc in state black_knight mad, missing flag appeased-black-knight) {
+    if all(
+        with npc black_knight,
+        npc in state black_knight mad,
+        missing flag appeased-black-knight,
+    ) {
         do show "The Black Knight prances around the room, occasionally trying to kick you in the shins."
         do npc random dialogue black_knight
     }
@@ -609,7 +621,7 @@ when give item keen_longsword to npc black_knight
 trigger "Sublevel-1-Entrance: Black Knight Hints About Vending Machine" only once
 when always
 {
-    if all(with npc black_knight, flag in progress hal-reboot) {
+    if all( with npc black_knight, flag in progress hal-reboot ) {
         do npc says black_knight "Lo, good Sir! I grow weary, and require a chalice of electrolytes and caffeine, but cannot leave my post. Nor do I want to dull my new sword doing battle with that infernal contraption in the lobby again. If you pass by there, retrieve one for me and I shall be further in your debt."
     }
 }
@@ -633,7 +645,7 @@ when take item sonic_screwdriver {
 
 trigger "Med-Bay: EMH/Cure Nausea"
 when talk to npc emh {
-    if all(has flag status:nauseated, has flag read-vogon-poetry) {
+    if all( has flag status:nauseated, has flag read-vogon-poetry ) {
         do add flag cured-vogon-poetry
         do remove flag status:nauseated
         do award points 3
@@ -644,7 +656,7 @@ when talk to npc emh {
 
 trigger "Med-Bay: Talk to EMH After Finding HAL" only once
 when always {
-    if all(with npc emh, flag in progress hal-reboot) {
+    if all( with npc emh, flag in progress hal-reboot ) {
         do npc says emh "Ah -- I hoped I would catch you. Word is, you've seen HAL, or what remains of him. If you want to get him working again -- and I'm not sure I'd advise it -- I may be able to get one of those memory modules for you."
         do set npc state emh custom:want-emitter
         do spawn item broken_emitter into container lost_and_found_box
@@ -659,7 +671,7 @@ when always {
 
 trigger "Med-Bay: EMH/Sonic Hint" only once
 when enter room med-bay {
-    if all(has item sonic_screwdriver, has flag mobilize-emh#1) {
+    if all( has item sonic_screwdriver, has flag mobilize-emh#1 ) {
         do npc says emh "Please state the nature of the med... wait -- is that a sonic screwdriver? I bet you could use that to repair my mobile emitter!"
     }
 }
@@ -705,7 +717,7 @@ when give item working_emitter to npc emh {
 
 trigger "Med-Bay: EMH/After HAL Rebooted" only once
 when always {
-    if all(with npc emh, flag complete hal-reboot) {
+    if all( with npc emh, flag complete hal-reboot ) {
         do set npc state emh normal
         do npc says emh "Well, now you've done it. HAL is operational again. We'll surely regret it -- or at least *you* will."
     }
@@ -771,7 +783,7 @@ when always {
 trigger "Monolith-Room: Announce Monolith Access After HAL Rebooted" only once
 when always
 {
-    if all(flag complete hal-reboot, with npc hal_9000) {
+    if all( flag complete hal-reboot, with npc hal_9000 ) {
         do show "HAL-9000's lens turns to focus on the monolith dominating the room."
         do npc says hal_9000 "Access granted, Candidate #2112-42. The monolith awaits your touch."
     }
@@ -780,7 +792,7 @@ when always
 trigger "Monolith-Room: Monolith Touch Prevented (HAL not ready)"
 when use item monolith ability turnOn
 {
-    if any(has flag hal-reboot#0, has flag hal-reboot#1) {
+    if any( has flag hal-reboot#0, has flag hal-reboot#1 ) {
         do show "As you approach the monolith, HAL-9000's dim red lens flickers briefly but he cannot respond coherently. Something prevents you from touching the ancient artifact - as if an invisible barrier surrounds it."
     }
     if has flag hal-reboot#2 {
@@ -799,7 +811,11 @@ when use item monolith ability turnOn
 trigger "Aperture-Lab: Invitation Hint" only once
 when always {
     if has flag got-invitation {
-        do schedule in 10 if all(has flag got-invitation, missing flag got-visitor-pass, has visited room b-a-office) onFalse cancel note "invitation hint" {
+        do schedule in 10 if all(
+            has flag got-invitation,
+            missing flag got-visitor-pass,
+            has visited room b-a-office,
+        ) onFalse cancel note "invitation hint" {
             do show "The invitation has cooled down enough now for you to give it to the receptionist in the Amble Adventures office ... maybe she'll help you now."
         }
     }
@@ -810,49 +826,72 @@ when take item towel {
     do add flag got-towel
     do award points 3
     do show "NOW you're a frood who really \"knows where his towel is\"!"
-    do schedule in 10 if all(has item towel, missing flag read-plaque-1) note "hint: towel can clean" {
+    do schedule in 10 if all( has item towel, missing flag read-plaque-1 ) note "hint: towel can clean" {
         do show "Towels can be awfully handy for cleaning grimy things. Just sayin'."
     }
 }
 
 # ------------------------------------------------------------------------------------------------------------------AMBIENT TRIGGERS
 
-let set woods = (high-ridge, parish-landing, two-sheds-landing, two-sheds, guard-post)
+let set woods = (
+    high-ridge,
+    parish-landing,
+    two-sheds-landing,
+    two-sheds,
+    guard-post,
+)
 trigger "Ambient Woodland"
 when always {
-    if all(chance 20%, in rooms woods) {
+    if all( chance 20%, in rooms woods ) {
         do spinner message ambientWoodland
     }
 }
 
-let set snowfield = (snowfield, snow-camp)
+let set snowfield = ( snowfield, snow-camp )
 trigger "Ambient Snowfield"
 when always {
-    if all(chance 20%, in rooms snowfield) {
+    if all( chance 20%, in rooms snowfield ) {
         do spinner message ambientSnowfield
     }
 }
 
-let set elevator = (lift-main, lift-sublevel-1)
+let set elevator = ( lift-main, lift-sublevel-1 )
 trigger "Elevator Muzak"
 when always {
-    if all(chance 30%, in rooms elevator) {
+    if all( chance 30%, in rooms elevator ) {
         do spinner message muzak
     }
 }
 
-let set near_aa3b = (lift-sublevel-1, sublevel-1-entrance, corridor-north, corridor-south, observation-room, security-station, med-bay, monolith-room)
+let set near_aa3b = (
+    lift-sublevel-1,
+    sublevel-1-entrance,
+    corridor-north,
+    corridor-south,
+    observation-room,
+    security-station,
+    med-bay,
+    monolith-room,
+)
 trigger "Ambient: Near AA-3B"
 when always {
-    if all(chance 20%, in rooms near_aa3b) {
+    if all( chance 20%, in rooms near_aa3b ) {
         do spinner message ambientAA3B
     }
 }
 
-let set main_floor = (main-lobby, b-a-office, restaurant, patio, lift-bank-main, lounge, vip-bathroom)
+let set main_floor = (
+    main-lobby,
+    b-a-office,
+    restaurant,
+    patio,
+    lift-bank-main,
+    lounge,
+    vip-bathroom,
+)
 trigger "Ambient: Main Floor"
 when always {
-    if all(chance 20%, in rooms main_floor) {
+    if all( chance 20%, in rooms main_floor ) {
         do spinner message ambientInterior
     }
 }
@@ -869,7 +908,7 @@ when use item vogon_poetry_book ability read {
 
 trigger "Status: Nauseated"
 when always {
-    if all(has flag status:nauseated, chance 50%) {
+    if all( has flag status:nauseated, chance 50% ) {
         do spinner message nauseated
     }
 }
@@ -899,10 +938,10 @@ trigger "Global: Drop Vogon Poetry"
 note "nausea only subsides with drop IF player didn't read it first or if the EMH cured them"
 when drop item vogon_poetry_book
 {
-    if any(missing flag read-vogon-poetry, has flag cured-vogon-poetry) {
+    if any( missing flag read-vogon-poetry, has flag cured-vogon-poetry ) {
         do show "That greasy, queasy feeling subsides."
     }
-    if all(has flag read-vogon-poetry, missing flag cured-vogon-poetry) {
+    if all( has flag read-vogon-poetry, missing flag cured-vogon-poetry ) {
         do show "Getting rid of the book helps a little, but the poem is burned into your mind and the nausea continues."
     }
 }
