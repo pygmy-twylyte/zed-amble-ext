@@ -314,7 +314,10 @@ impl Backend {
         while let Some(m) = matches.next() {
             for capture in m.captures {
                 let node = capture.node;
-                let room_id = &text[node.byte_range()];
+                let room_id = text[node.byte_range()].trim();
+                if room_id.is_empty() {
+                    continue;
+                }
 
                 // Convert tree-sitter position to LSP position
                 let start_point = node.start_position();
@@ -362,7 +365,10 @@ impl Backend {
         while let Some(m) = matches.next() {
             for capture in m.captures {
                 let node = capture.node;
-                let room_id = &text[node.byte_range()];
+                let room_id = text[node.byte_range()].trim();
+                if room_id.is_empty() {
+                    continue;
+                }
 
                 // Skip if this is the definition itself (room_id in room_def)
                 // We can check if the parent is a room_def
