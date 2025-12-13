@@ -1,52 +1,53 @@
 npc b_a_receptionist {
-  name "Receptionist"
-  desc "A neatly dressed android sitting at the reception desk."
-  location room b-a-office
-  state normal
-  dialogue bored {
-    "Good job getting the keycard. Many of our previous applicants have died in the attempt. Very promising! The evaluator will be pleased. Strong lateral thinking and slight psychosis are essential for such a dangerous position, as I'm sure you are aware."
-    "You can now use the elevator to find room AA-3B for the next stage of your initiation."
-  }
-  dialogue happy {
-    "Terribly sorry to report that we are in a bit of trouble here today. The last candidate was inconsiderate enough to take the elevator access card into the poetry panic room just before he melted, and we can't retrieve it."
-    "The elevator keycard last pinged our system from the Poetry Panic Room, but it is sealed, and concealed behind the whiteboard. Only the Poetry Performer Unit can grant access."
-    "Sorry I didn't immediately recognize that you are a Candidate, but most of your competitors have been blurry, furry, or out of phase."
-  }
-  dialogue normal {
-    "(She rolls her eyes.) Please wait quietly out of the way. There are people with invitations who should be assisted first."
-    "(She simply ignores you.)"
-    "(She continues doing her job -- which appears to be pointedly ignoring anyone without an invitation.)"
-    "(She carefully realigns the models of Portal turrets on her desk so they are aiming at you.)"
-    "(Exasperated sigh.) Do I show up at your home and start making demands without an invitation? No. Now please wait to the side.)"
-  }
+    name "Receptionist"
+    desc "A neatly dressed android sitting at the reception desk."
+    location room b-a-office
+    max_hp 20
+    state normal
+    dialogue bored {
+        "Good job getting the keycard. Many of our previous applicants have died in the attempt. Very promising! The evaluator will be pleased. Strong lateral thinking and slight psychosis are essential for such a dangerous position, as I'm sure you are aware."
+        "You can now use the elevator to find room AA-3B for the next stage of your initiation."
+    }
+    dialogue happy {
+        "Terribly sorry to report that we are in a bit of trouble here today. The last candidate was inconsiderate enough to take the elevator access card into the poetry panic room just before he melted, and we can't retrieve it."
+        "The elevator keycard last pinged our system from the Poetry Panic Room, but it is sealed, and concealed behind the whiteboard. Only the Poetry Performer Unit can grant access."
+        "Sorry I didn't immediately recognize that you are a Candidate, but most of your competitors have been blurry, furry, or out of phase."
+    }
+    dialogue normal {
+        "(She rolls her eyes.) Please wait quietly out of the way. There are people with invitations who should be assisted first."
+        "(She simply ignores you.)"
+        "(She continues doing her job -- which appears to be pointedly ignoring anyone without an invitation.)"
+        "(She carefully realigns the models of Portal turrets on her desk so they are aiming at you.)"
+        "(Exasperated sigh.) Do I show up at your home and start making demands without an invitation? No. Now please wait to the side.)"
+    }
 }
 
 npc black_knight {
-  name "The Black Knight"
-  desc "A dark, glowering presence in a black suit of armor with a longsword."
-  location room sublevel-1-entrance
-  state normal
-  dialogue happy {
-    "None shall pa-- oh, no, you can go."
-    "YOU may pass, Candidate; I will be sure to dice anyone who dares to follow."
-    "You may pass, but beware and steer clear of Room AA-3B, should it reappear."
-    "Behold! (slices an aluminum can and then a tomato, laughing maniacally)"
-  }
-  dialogue mad {
-    "Have at you!"
-    "I'm invincible!"
-    "'tis but a scratch."
-    "It's just a flesh wound!"
-    "Come on, you pansy!"
-    "Chicken! Bawk-bawk! Chicken!"
-    "Gimme that sword back, or I'll bite your legs off!"
-    "I won that sword in the office gift game. Give it back!"
-  }
-  dialogue normal {
-    "None shall pass."
-    "I move -- for no man."
-    "(He stands silently, blocking your path.)"
-  }
+    name "The Black Knight"
+    desc "A dark, glowering presence in a black suit of armor with a longsword."
+    location room sublevel-1-entrance
+    state normal
+    dialogue happy {
+        "None shall pa-- oh, no, you can go."
+        "YOU may pass, Candidate; I will be sure to dice anyone who dares to follow."
+        "You may pass, but beware and steer clear of Room AA-3B, should it reappear."
+        "Behold! (slices an aluminum can and then a tomato, laughing maniacally)"
+    }
+    dialogue mad {
+        "Have at you!"
+        "I'm invincible!"
+        "'tis but a scratch."
+        "It's just a flesh wound!"
+        "Come on, you pansy!"
+        "Chicken! Bawk-bawk! Chicken!"
+        "Gimme that sword back, or I'll bite your legs off!"
+        "I won that sword in the office gift game. Give it back!"
+    }
+    dialogue normal {
+        "None shall pass."
+        "I move -- for no man."
+        "(He stands silently, blocking your path.)"
+    }
 }
 
 npc cmot_dibbler {
@@ -55,9 +56,17 @@ npc cmot_dibbler {
     location room main-lobby
     state normal
     movement random
-        rooms (main-lobby, loading-dock, restaurant, lounge, east-of-building, front-entrance, lift-bank-main )
-        timing every_3_turns
-        active true
+    rooms (
+        main-lobby,
+        loading-dock,
+        restaurant,
+        lounge,
+        east-of-building,
+        front-entrance,
+        lift-bank-main,
+    )
+    timing every_3_turns
+    active true
     dialogue bored {
         "Not much foot traffic here. Maybe I should try the loading dock."
         "A vendor's work is never done. Time to find some new customers."
@@ -81,29 +90,29 @@ npc cmot_dibbler {
 }
 
 npc emh {
-  name "Emergency Medical Hologram"
-  desc "A balding and somewhat anxious-appearing holographic doctor in a Starfleet uniform."
-  location room med-bay
-  state normal
-  dialogue custom want-emitter {
-    "I think I know where to find one of HAL's missing modules, but I can't leave med bay without my mobile emitter."
-    "I'd be happy to help you find HAL's memory module, but I can't leave the med bay without my mobile emitter."
-    "I was visiting a colleague at the restaurant on the main level when I last had my mobile emitter. There was a brilliant flash of electromagnetic radiation... and next thing I knew I was back here in the sick bay."
-    "It must have been the EM pulse in the restaurant that reset my emitter. If it wasn't completely destroyed, someone might have turned it in at the office."
-  }
-  dialogue happy {
-    "Yes! I can roam free again. But where will I go?"
-    "It's nice to be mobile again, but I'll never go back to that restaurant. You'd think they'd install some magnetic shielding."
-  }
-  dialogue normal {
-    "Please state the nature of the medical emergency."
-    "They left me turned on again. I'm a doctor, not a night light!"
-    "Clean up the reality breach, they said. I'm a doctor, not Gordon Freeman!"
-    "I don't appreciate being deactivated in the middle of a sentence. It brings back... unpleasant memories."
-    "If you see CMOT Dibbler, don't eat the sausage-inna-bun -- unless you fancy coming back here for nasogastric suction."
-    "Welcome to sick bay. Please take a number."
-    "Good to see that you got past the Black Knight. Lucky for me, you can't dismember a hologram."
-  }
+    name "Emergency Medical Hologram"
+    desc "A balding and somewhat anxious-appearing holographic doctor in a Starfleet uniform."
+    location room med-bay
+    state normal
+    dialogue custom want-emitter {
+        "I think I know where to find one of HAL's missing modules, but I can't leave med bay without my mobile emitter."
+        "I'd be happy to help you find HAL's memory module, but I can't leave the med bay without my mobile emitter."
+        "I was visiting a colleague at the restaurant on the main level when I last had my mobile emitter. There was a brilliant flash of electromagnetic radiation... and next thing I knew I was back here in the sick bay."
+        "It must have been the EM pulse in the restaurant that reset my emitter. If it wasn't completely destroyed, someone might have turned it in at the office."
+    }
+    dialogue happy {
+        "Yes! I can roam free again. But where will I go?"
+        "It's nice to be mobile again, but I'll never go back to that restaurant. You'd think they'd install some magnetic shielding."
+    }
+    dialogue normal {
+        "Please state the nature of the medical emergency."
+        "They left me turned on again. I'm a doctor, not a night light!"
+        "Clean up the reality breach, they said. I'm a doctor, not Gordon Freeman!"
+        "I don't appreciate being deactivated in the middle of a sentence. It brings back... unpleasant memories."
+        "If you see CMOT Dibbler, don't eat the sausage-inna-bun -- unless you fancy coming back here for nasogastric suction."
+        "Welcome to sick bay. Please take a number."
+        "Good to see that you got past the Black Knight. Lucky for me, you can't dismember a hologram."
+    }
 }
 
 npc gonk_droid {
@@ -112,8 +121,12 @@ npc gonk_droid {
     location room main-lobby
     state normal
     movement route
-        rooms (main-lobby, lift-bank-main, lounge )
-        timing every_2_turns
+    rooms (
+        main-lobby,
+        lift-bank-main,
+        lounge,
+    )
+    timing every_2_turns
     dialogue happy {
         "(You hear a transformer humming a happy tune.)"
     }

@@ -269,6 +269,10 @@
       "nowhere"
     ] @variant.builtin))
 
+(npc_max_hp_stmt
+  "max_hp" @keyword
+  (pos_int) @number)
+
 (npc_state_stmt
   "state" @keyword)
 
