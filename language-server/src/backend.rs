@@ -6,6 +6,7 @@ use crate::text::DocumentStore;
 use dashmap::DashMap;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::time::SystemTime;
 use std::sync::Arc;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
@@ -20,6 +21,7 @@ pub struct Backend {
     pub(crate) workspace_roots: Arc<parking_lot::RwLock<Vec<PathBuf>>>,
     pub(crate) parser: Arc<parking_lot::Mutex<Parser>>,
     pub(crate) queries: Arc<Queries>,
+    pub(crate) scanned_directories: Arc<DashMap<PathBuf, Option<SystemTime>>>,
 }
 
 impl Backend {
@@ -37,6 +39,7 @@ impl Backend {
             workspace_roots: Arc::new(parking_lot::RwLock::new(Vec::new())),
             parser: Arc::new(parking_lot::Mutex::new(parser)),
             queries: Arc::new(Queries::new()),
+            scanned_directories: Arc::new(DashMap::new()),
         }
     }
 

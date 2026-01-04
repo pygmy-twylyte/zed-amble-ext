@@ -6,12 +6,15 @@ use crate::symbols::{
 };
 use crate::text::Document;
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 use tower_lsp::lsp_types::{
     Diagnostic, DiagnosticSeverity, InitializeParams, Position, Range, Url,
 };
 use tree_sitter::{Node, QueryCursor, StreamingIterator};
-use walkdir::WalkDir;
+use walkdir::{DirEntry, WalkDir};
+
+const IGNORED_DIRECTORIES: &[&str] = &[".git", "node_modules", "target", "dist", "build"];
 
 impl Backend {
     pub(crate) fn update_workspace_roots(&self, params: &InitializeParams) {
@@ -87,9 +90,15 @@ impl Backend {
                 continue;
             }
 
+            let modified = directory_modified(&dir);
+            if !self.should_scan_directory(&dir, modified) {
+                continue;
+            }
+
             for entry in WalkDir::new(&dir)
                 .follow_links(false)
                 .into_iter()
+                .filter_entry(|entry| should_visit_entry(entry))
                 .filter_map(|entry| entry.ok())
             {
                 if !entry.file_type().is_file() {
@@ -109,6 +118,16 @@ impl Backend {
                     }
                 }
             }
+
+            self.scanned_directories
+                .insert(dir.clone(), modified);
+        }
+    }
+
+    fn should_scan_directory(&self, dir: &Path, modified: Option<SystemTime>) -> bool {
+        match self.scanned_directories.get(dir) {
+            Some(previous) => needs_rescan(previous.value().clone(), modified),
+            None => true,
         }
     }
 
@@ -721,6 +740,32 @@ impl Backend {
         self.client
             .publish_diagnostics(uri.clone(), diagnostics, None)
             .await;
+    }
+}
+
+fn should_visit_entry(entry: &DirEntry) -> bool {
+    if entry.file_type().is_dir() {
+        if let Some(name) = entry.file_name().to_str() {
+            return !IGNORED_DIRECTORIES
+                .iter()
+                .any(|ignored| ignored.eq_ignore_ascii_case(name));
+        }
+    }
+    true
+}
+
+fn directory_modified(path: &Path) -> Option<SystemTime> {
+    std::fs::metadata(path).ok()?.modified().ok()
+}
+
+fn needs_rescan(previous: Option<SystemTime>, current: Option<SystemTime>) -> bool {
+    match (previous, current) {
+        (None, _) => true,
+        (Some(_), None) => true,
+        (Some(prev), Some(curr)) => match curr.duration_since(prev) {
+            Ok(elapsed) => !elapsed.is_zero(),
+            Err(_) => true,
+        },
     }
 }
 
