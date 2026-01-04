@@ -70,6 +70,44 @@ impl Backend {
 
         edits
     }
+
+    fn definition_display_path(&self, uri: &Url) -> Option<String> {
+        let file_path = uri.to_file_path().ok()?;
+        let mut best_match: Option<(usize, PathBuf)> = None;
+        {
+            let roots = self.workspace_roots.read();
+            for root in roots.iter() {
+                if file_path.starts_with(root) {
+                    let depth = root.components().count();
+                    let replace = best_match
+                        .as_ref()
+                        .map(|(best_depth, _)| depth > *best_depth)
+                        .unwrap_or(true);
+                    if replace {
+                        best_match = Some((depth, root.clone()));
+                    }
+                }
+            }
+        }
+
+        if let Some((_, root)) = best_match {
+            if let Ok(relative) = file_path.strip_prefix(root) {
+                let mut rel = relative.to_string_lossy().replace('\\', "/");
+                if rel.starts_with('/') {
+                    rel = rel.trim_start_matches('/').to_string();
+                }
+                if rel.is_empty() {
+                    rel = file_path
+                        .file_name()
+                        .map(|name| name.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| file_path.to_string_lossy().into_owned());
+                }
+                return Some(rel);
+            }
+        }
+
+        Some(file_path.to_string_lossy().replace('\\', "/"))
+    }
 }
 
 #[tower_lsp::async_trait]
@@ -166,7 +204,8 @@ impl LanguageServer for Backend {
         if let Some((symbol_type, id)) = self.get_symbol_at_position(&uri, position) {
             let index = self.symbols.index(symbol_type);
             if let Some(def) = index.definition(&id) {
-                let value = format_hover(&id, &def);
+                let path_hint = self.definition_display_path(&def.location.uri);
+                let value = format_hover(&id, &def, path_hint.as_deref());
                 return Ok(Some(Hover {
                     contents: HoverContents::Markup(MarkupContent {
                         kind: MarkupKind::Markdown,

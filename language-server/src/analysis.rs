@@ -1,7 +1,7 @@
 use crate::backend::Backend;
 use crate::symbols::{
-    sanitize_markdown, FlagMetadata, ItemMetadata, NpcMetadata, RoomMetadata, SetMetadata,
-    SymbolDefinition, SymbolKind, SymbolLocation, SymbolMetadata, SymbolOccurrence,
+    sanitize_markdown, FlagMetadata, ItemMetadata, Movability, NpcMetadata, RoomMetadata,
+    SetMetadata, SymbolDefinition, SymbolKind, SymbolLocation, SymbolMetadata, SymbolOccurrence,
     SymbolReference,
 };
 use crate::text::Document;
@@ -246,7 +246,7 @@ impl Backend {
                 let (
                     name,
                     description,
-                    portable,
+                    movability,
                     item_location,
                     container_state,
                     abilities,
@@ -269,7 +269,7 @@ impl Backend {
                         metadata: SymbolMetadata::Item(ItemMetadata {
                             name,
                             description,
-                            portable,
+                            movability,
                             location: item_location,
                             container_state,
                             abilities,
@@ -769,18 +769,25 @@ fn needs_rescan(previous: Option<SystemTime>, current: Option<SystemTime>) -> bo
     }
 }
 
-pub(crate) fn format_hover(id: &str, def: &SymbolDefinition) -> String {
+pub(crate) fn format_hover(
+    id: &str,
+    def: &SymbolDefinition,
+    relative_path: Option<&str>,
+) -> String {
     match &def.metadata {
-        SymbolMetadata::Room(meta) => format_room_hover(id, meta),
-        SymbolMetadata::Item(meta) => format_item_hover(id, meta),
-        SymbolMetadata::Npc(meta) => format_npc_hover(id, meta),
-        SymbolMetadata::Flag(meta) => format_flag_hover(id, meta),
-        SymbolMetadata::Set(meta) => format_set_hover(id, meta),
+        SymbolMetadata::Room(meta) => format_room_hover(id, meta, relative_path),
+        SymbolMetadata::Item(meta) => format_item_hover(id, meta, relative_path),
+        SymbolMetadata::Npc(meta) => format_npc_hover(id, meta, relative_path),
+        SymbolMetadata::Flag(meta) => format_flag_hover(id, meta, relative_path),
+        SymbolMetadata::Set(meta) => format_set_hover(id, meta, relative_path),
     }
 }
 
-fn format_room_hover(id: &str, meta: &RoomMetadata) -> String {
+fn format_room_hover(id: &str, meta: &RoomMetadata, relative_path: Option<&str>) -> String {
     let mut lines = vec![format!("**Room:** {}", sanitize_markdown(id))];
+    if let Some(location_line) = definition_path_line(relative_path) {
+        lines.push(location_line);
+    }
     lines.push(format!(
         "- Name: {}",
         meta.name
@@ -810,8 +817,11 @@ fn format_room_hover(id: &str, meta: &RoomMetadata) -> String {
     lines.join("\n")
 }
 
-fn format_item_hover(id: &str, meta: &ItemMetadata) -> String {
+fn format_item_hover(id: &str, meta: &ItemMetadata, relative_path: Option<&str>) -> String {
     let mut lines = vec![format!("**Item:** {}", sanitize_markdown(id))];
+    if let Some(location_line) = definition_path_line(relative_path) {
+        lines.push(location_line);
+    }
     lines.push(format!(
         "- Name: {}",
         meta.name
@@ -827,10 +837,8 @@ fn format_item_hover(id: &str, meta: &ItemMetadata) -> String {
             .unwrap_or_else(|| "(missing)".to_string())
     ));
     lines.push(format!(
-        "- Portable: {}",
-        meta.portable
-            .map(|p| if p { "true" } else { "false" }.to_string())
-            .unwrap_or_else(|| "(none)".to_string())
+        "- Movability: {}",
+        describe_movability(meta.movability.as_ref())
     ));
     lines.push(format!(
         "- Location: {}",
@@ -865,8 +873,11 @@ fn format_item_hover(id: &str, meta: &ItemMetadata) -> String {
     lines.join("\n")
 }
 
-fn format_npc_hover(id: &str, meta: &NpcMetadata) -> String {
+fn format_npc_hover(id: &str, meta: &NpcMetadata, relative_path: Option<&str>) -> String {
     let mut lines = vec![format!("**NPC:** {}", sanitize_markdown(id))];
+    if let Some(location_line) = definition_path_line(relative_path) {
+        lines.push(location_line);
+    }
     lines.push(format!(
         "- Name: {}",
         meta.name
@@ -898,8 +909,11 @@ fn format_npc_hover(id: &str, meta: &NpcMetadata) -> String {
     lines.join("\n")
 }
 
-fn format_flag_hover(id: &str, meta: &FlagMetadata) -> String {
+fn format_flag_hover(id: &str, meta: &FlagMetadata, relative_path: Option<&str>) -> String {
     let mut lines = vec![format!("**Flag:** {}", sanitize_markdown(id))];
+    if let Some(location_line) = definition_path_line(relative_path) {
+        lines.push(location_line);
+    }
     if let Some(trigger) = &meta.defined_in {
         lines.push(format!(
             "- Defined in trigger: {}",
@@ -915,8 +929,11 @@ fn format_flag_hover(id: &str, meta: &FlagMetadata) -> String {
     lines.join("\n")
 }
 
-fn format_set_hover(id: &str, meta: &SetMetadata) -> String {
+fn format_set_hover(id: &str, meta: &SetMetadata, relative_path: Option<&str>) -> String {
     let mut lines = vec![format!("**Set:** {}", sanitize_markdown(id))];
+    if let Some(location_line) = definition_path_line(relative_path) {
+        lines.push(location_line);
+    }
     lines.push(format!(
         "- Rooms: {}",
         if meta.rooms.is_empty() {
@@ -926,6 +943,29 @@ fn format_set_hover(id: &str, meta: &SetMetadata) -> String {
         }
     ));
     lines.join("\n")
+}
+
+fn definition_path_line(relative_path: Option<&str>) -> Option<String> {
+    relative_path.map(|path| format!("- File: {}", sanitize_markdown(path)))
+}
+
+fn describe_movability(movability: Option<&Movability>) -> String {
+    match movability {
+        Some(Movability::Free) => "free".to_string(),
+        Some(Movability::Fixed(note)) => match note {
+            Some(text) if !text.trim().is_empty() => {
+                format!("fixed ({})", sanitize_markdown(text))
+            }
+            _ => "fixed".to_string(),
+        },
+        Some(Movability::Restricted(note)) => match note {
+            Some(text) if !text.trim().is_empty() => {
+                format!("restricted ({})", sanitize_markdown(text))
+            }
+            _ => "restricted".to_string(),
+        },
+        None => "(none)".to_string(),
+    }
 }
 
 fn range_from_node(document: &Document, node: &Node) -> Range {
@@ -1076,7 +1116,7 @@ fn extract_item_metadata(
 ) -> (
     Option<String>,
     Option<String>,
-    Option<bool>,
+    Option<Movability>,
     Option<String>,
     Option<String>,
     Vec<String>,
@@ -1084,7 +1124,7 @@ fn extract_item_metadata(
 ) {
     let mut name = None;
     let mut description = None;
-    let mut portable = None;
+    let mut movability = None;
     let mut location = None;
     let mut container_state = None;
     let mut abilities = Vec::new();
@@ -1104,9 +1144,9 @@ fn extract_item_metadata(
                         description = Some(normalize_string_literal(slice_text(text, &desc_node)));
                     }
                 }
-                "item_portable_stmt" => {
-                    if let Some(port_node) = child.child_by_field_name("portable") {
-                        portable = Some(slice_text(text, &port_node).trim() == "true");
+                "item_movability_stmt" => {
+                    if let Some(mov_node) = child.child_by_field_name("movability") {
+                        movability = extract_movability(&mov_node, text);
                     }
                 }
                 "item_loc_stmt" => {
@@ -1140,12 +1180,32 @@ fn extract_item_metadata(
     (
         name,
         description,
-        portable,
+        movability,
         location,
         container_state,
         abilities,
         requirements,
     )
+}
+
+fn extract_movability(node: &Node, text: &str) -> Option<Movability> {
+    let raw = slice_text(text, node).trim();
+    let lowered = raw.to_ascii_lowercase();
+    if lowered == "free" {
+        return Some(Movability::Free);
+    }
+
+    let note = node
+        .child_by_field_name("note")
+        .map(|note_node| normalize_string_literal(slice_text(text, &note_node)));
+
+    if lowered.starts_with("fixed") {
+        Some(Movability::Fixed(note))
+    } else if lowered.starts_with("restricted") {
+        Some(Movability::Restricted(note))
+    } else {
+        None
+    }
 }
 
 fn extract_npc_metadata(
@@ -1526,10 +1586,11 @@ mod tests {
             exits: vec!["north-hall".into(), "south-porch".into()],
         };
 
-        let hover = format_room_hover("test-room", &meta);
+        let hover = format_room_hover("test-room", &meta, Some("rooms/test-room.amble"));
         assert!(hover.contains("**Room:** test-room"));
         assert!(hover.contains("Test Room"));
         assert!(hover.contains("north-hall"));
+        assert!(hover.contains("File: rooms/test-room.amble"));
     }
 
     #[test]
@@ -1537,15 +1598,17 @@ mod tests {
         let meta = ItemMetadata {
             name: Some("Widget".into()),
             description: Some("Useful widget".into()),
-            portable: Some(true),
+            movability: Some(Movability::Free),
             location: Some("room lab".into()),
             container_state: Some("closed".into()),
             abilities: vec!["ability Unlock".into()],
             requirements: vec!["requires ability Use to interact".into()],
         };
 
-        let hover = format_item_hover("widget", &meta);
+        let hover = format_item_hover("widget", &meta, Some("items/widget.amble"));
         assert!(hover.contains("Abilities: ability Unlock"));
         assert!(hover.contains("Requirements: requires ability Use to interact"));
+        assert!(hover.contains("Movability: free"));
+        assert!(hover.contains("File: items/widget.amble"));
     }
 }

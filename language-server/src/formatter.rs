@@ -503,8 +503,8 @@ mod tests {
 
     #[test]
     fn formats_item_block() {
-        let source = "item sample {\n  name \"Sample\"\n  portable true\n}\n";
-        let expected = "item sample {\n    name \"Sample\"\n    portable true\n}\n";
+        let source = "item sample {\n  name \"Sample\"\n  movability free\n}\n";
+        let expected = "item sample {\n    name \"Sample\"\n    movability free\n}\n";
         assert_eq!(format_document(source), expected);
     }
 

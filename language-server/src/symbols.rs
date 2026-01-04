@@ -67,7 +67,7 @@ pub struct RoomMetadata {
 pub struct ItemMetadata {
     pub name: Option<String>,
     pub description: Option<String>,
-    pub portable: Option<bool>,
+    pub movability: Option<Movability>,
     pub location: Option<String>,
     pub container_state: Option<String>,
     pub abilities: Vec<String>,
@@ -98,6 +98,13 @@ pub struct SymbolOccurrence {
     pub kind: SymbolKind,
     pub id: String,
     pub range: Range,
+}
+
+#[derive(Debug, Clone)]
+pub enum Movability {
+    Free,
+    Fixed(Option<String>),
+    Restricted(Option<String>),
 }
 
 #[derive(Debug, Default)]
