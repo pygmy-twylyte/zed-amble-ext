@@ -13,6 +13,8 @@ use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer};
 use tree_sitter::Parser;
 
+const COMPLETION_DETAIL_MAX_CHARS: usize = 80;
+
 pub struct Backend {
     pub(crate) client: Client,
     pub(crate) symbols: Arc<SymbolStore>,
@@ -43,6 +45,27 @@ impl Backend {
             queries: Arc::new(Queries::new()),
             scanned_directories: Arc::new(DashMap::new()),
             player_starts: Arc::new(DashMap::new()),
+        }
+    }
+
+    fn completion_item_from_definition(
+        &self,
+        kind: SymbolKind,
+        id: &str,
+        definition: &SymbolDefinition,
+    ) -> CompletionItem {
+        let path_hint = self.definition_display_path(&definition.location.uri);
+        let documentation = format_hover(id, definition, path_hint.as_deref());
+        CompletionItem {
+            label: id.to_string(),
+            kind: Some(completion_item_kind(kind)),
+            detail: truncate_completion_detail(definition_detail(definition)),
+            documentation: Some(Documentation::MarkupContent(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: documentation,
+            })),
+            sort_text: Some(id.to_string()),
+            ..Default::default()
         }
     }
 
@@ -237,6 +260,27 @@ fn lsp_symbol_kind(kind: SymbolKind) -> tower_lsp::lsp_types::SymbolKind {
         SymbolKind::Flag => tower_lsp::lsp_types::SymbolKind::ENUM_MEMBER,
         SymbolKind::Set => tower_lsp::lsp_types::SymbolKind::NAMESPACE,
     }
+}
+
+fn completion_item_kind(kind: SymbolKind) -> CompletionItemKind {
+    match kind {
+        SymbolKind::Room => CompletionItemKind::CLASS,
+        SymbolKind::Item => CompletionItemKind::STRUCT,
+        SymbolKind::Npc => CompletionItemKind::FIELD,
+        SymbolKind::Flag => CompletionItemKind::ENUM_MEMBER,
+        SymbolKind::Set => CompletionItemKind::MODULE,
+    }
+}
+
+fn truncate_completion_detail(detail: Option<String>) -> Option<String> {
+    detail.map(|value| {
+        let chars = value.chars();
+        if chars.clone().count() <= COMPLETION_DETAIL_MAX_CHARS {
+            return value;
+        }
+        let truncated: String = chars.take(COMPLETION_DETAIL_MAX_CHARS).collect();
+        format!("{}...", truncated)
+    })
 }
 
 fn query_matches_symbol(name: &str, detail: Option<&str>, query: &str) -> bool {
@@ -469,20 +513,15 @@ impl LanguageServer for Backend {
         if let Some(symbol_type) = self.get_completion_context(&uri, position) {
             let index = self.symbols.index(symbol_type);
             let mut items = Vec::new();
-            let label = symbol_type.label();
 
             for entry in index.definitions_iter() {
-                let id = entry.key();
-                items.push(CompletionItem {
-                    label: id.clone(),
-                    kind: Some(CompletionItemKind::CONSTANT),
-                    detail: Some(format!("{}: {}", label, id)),
-                    documentation: Some(Documentation::String(format!(
-                        "Defined in: {}",
-                        entry.value().location.uri
-                    ))),
-                    ..Default::default()
-                });
+                let id = entry.key().clone();
+                let definition = entry.value().clone();
+                items.push(self.completion_item_from_definition(
+                    symbol_type,
+                    &id,
+                    &definition,
+                ));
             }
 
             if !items.is_empty() {

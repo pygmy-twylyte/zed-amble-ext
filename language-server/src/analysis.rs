@@ -15,6 +15,7 @@ use tree_sitter::{Node, QueryCursor, StreamingIterator};
 use walkdir::{DirEntry, WalkDir};
 
 const IGNORED_DIRECTORIES: &[&str] = &[".git", "node_modules", "target", "dist", "build"];
+const HOVER_DESCRIPTION_MAX_CHARS: usize = 100;
 
 /// Captures a `player_start` location plus source span for diagnostics.
 #[derive(Debug, Clone)]
@@ -127,8 +128,7 @@ impl Backend {
                 }
             }
 
-            self.scanned_directories
-                .insert(dir.clone(), modified);
+            self.scanned_directories.insert(dir.clone(), modified);
         }
     }
 
@@ -760,12 +760,36 @@ impl Backend {
 
     /// Flags duplicate definitions, downgrading flags to hints because multiple triggers
     /// may intentionally set the same game state.
-    fn append_duplicate_definition_diagnostics(&self, uri: &Url, diagnostics: &mut Vec<Diagnostic>) {
-        self.append_duplicate_diagnostics_for_index(uri, diagnostics, SymbolKind::Room, &self.symbols.rooms);
-        self.append_duplicate_diagnostics_for_index(uri, diagnostics, SymbolKind::Item, &self.symbols.items);
-        self.append_duplicate_diagnostics_for_index(uri, diagnostics, SymbolKind::Npc, &self.symbols.npcs);
+    fn append_duplicate_definition_diagnostics(
+        &self,
+        uri: &Url,
+        diagnostics: &mut Vec<Diagnostic>,
+    ) {
+        self.append_duplicate_diagnostics_for_index(
+            uri,
+            diagnostics,
+            SymbolKind::Room,
+            &self.symbols.rooms,
+        );
+        self.append_duplicate_diagnostics_for_index(
+            uri,
+            diagnostics,
+            SymbolKind::Item,
+            &self.symbols.items,
+        );
+        self.append_duplicate_diagnostics_for_index(
+            uri,
+            diagnostics,
+            SymbolKind::Npc,
+            &self.symbols.npcs,
+        );
         self.append_duplicate_flag_diagnostics(uri, diagnostics);
-        self.append_duplicate_diagnostics_for_index(uri, diagnostics, SymbolKind::Set, &self.symbols.sets);
+        self.append_duplicate_diagnostics_for_index(
+            uri,
+            diagnostics,
+            SymbolKind::Set,
+            &self.symbols.sets,
+        );
     }
 
     fn append_duplicate_diagnostics_for_index(
@@ -1120,26 +1144,16 @@ pub(crate) fn format_hover(
 }
 
 fn format_room_hover(id: &str, meta: &RoomMetadata, relative_path: Option<&str>) -> String {
-    let mut lines = vec![format!("**Room:** {}", sanitize_markdown(id))];
+    let mut lines = vec![entity_title_line("ROOM", meta.name.as_deref(), id)];
     if let Some(location_line) = definition_path_line(relative_path) {
         lines.push(location_line);
     }
     lines.push(format!(
-        "- Name: {}",
-        meta.name
-            .as_deref()
-            .map(sanitize_markdown)
-            .unwrap_or_else(|| "(missing)".to_string())
+        "- **Description:** {}",
+        truncate_description(meta.description.as_deref())
     ));
     lines.push(format!(
-        "- Description: {}",
-        meta.description
-            .as_deref()
-            .map(sanitize_markdown)
-            .unwrap_or_else(|| "(missing)".to_string())
-    ));
-    lines.push(format!(
-        "- Exits: {}",
+        "- **Exits:** {}",
         if meta.exits.is_empty() {
             "(none)".to_string()
         } else {
@@ -1154,37 +1168,27 @@ fn format_room_hover(id: &str, meta: &RoomMetadata, relative_path: Option<&str>)
 }
 
 fn format_item_hover(id: &str, meta: &ItemMetadata, relative_path: Option<&str>) -> String {
-    let mut lines = vec![format!("**Item:** {}", sanitize_markdown(id))];
+    let mut lines = vec![entity_title_line("ITEM", meta.name.as_deref(), id)];
     if let Some(location_line) = definition_path_line(relative_path) {
         lines.push(location_line);
     }
     lines.push(format!(
-        "- Name: {}",
-        meta.name
-            .as_deref()
-            .map(sanitize_markdown)
-            .unwrap_or_else(|| "(missing)".to_string())
+        "- **Description:** {}",
+        truncate_description(meta.description.as_deref())
     ));
     lines.push(format!(
-        "- Description: {}",
-        meta.description
-            .as_deref()
-            .map(sanitize_markdown)
-            .unwrap_or_else(|| "(missing)".to_string())
-    ));
-    lines.push(format!(
-        "- Movability: {}",
+        "- **Movability:** {}",
         describe_movability(meta.movability.as_ref())
     ));
     lines.push(format!(
-        "- Location: {}",
+        "- **Location:** {}",
         meta.location
             .as_deref()
             .map(sanitize_markdown)
             .unwrap_or_else(|| "(missing)".to_string())
     ));
     lines.push(format!(
-        "- Container state: {}",
+        "- **Container state:** {}",
         meta.container_state
             .as_deref()
             .map(sanitize_markdown)
@@ -1201,42 +1205,32 @@ fn format_item_hover(id: &str, meta: &ItemMetadata, relative_path: Option<&str>)
                 .join(", ")
         }
     };
-    lines.push(format!("- Abilities: {}", format_list(&meta.abilities)));
+    lines.push(format!("- **Abilities:** {}", format_list(&meta.abilities)));
     lines.push(format!(
-        "- Requirements: {}",
+        "- **Requires:** {}",
         format_list(&meta.requirements)
     ));
     lines.join("\n")
 }
 
 fn format_npc_hover(id: &str, meta: &NpcMetadata, relative_path: Option<&str>) -> String {
-    let mut lines = vec![format!("**NPC:** {}", sanitize_markdown(id))];
+    let mut lines = vec![entity_title_line("NPC", meta.name.as_deref(), id)];
     if let Some(location_line) = definition_path_line(relative_path) {
         lines.push(location_line);
     }
     lines.push(format!(
-        "- Name: {}",
-        meta.name
-            .as_deref()
-            .map(sanitize_markdown)
-            .unwrap_or_else(|| "(missing)".to_string())
+        "- **Description:** {}",
+        truncate_description(meta.description.as_deref())
     ));
     lines.push(format!(
-        "- Description: {}",
-        meta.description
-            .as_deref()
-            .map(sanitize_markdown)
-            .unwrap_or_else(|| "(missing)".to_string())
-    ));
-    lines.push(format!(
-        "- Location: {}",
+        "- **Location:** {}",
         meta.location
             .as_deref()
             .map(sanitize_markdown)
             .unwrap_or_else(|| "(missing)".to_string())
     ));
     lines.push(format!(
-        "- State: {}",
+        "- **State:** {}",
         meta.state
             .as_deref()
             .map(sanitize_markdown)
@@ -1246,43 +1240,91 @@ fn format_npc_hover(id: &str, meta: &NpcMetadata, relative_path: Option<&str>) -
 }
 
 fn format_flag_hover(id: &str, meta: &FlagMetadata, relative_path: Option<&str>) -> String {
-    let mut lines = vec![format!("**Flag:** {}", sanitize_markdown(id))];
+    let mut lines = vec![entity_title_line("FLAG", None, id)];
     if let Some(location_line) = definition_path_line(relative_path) {
         lines.push(location_line);
     }
     if let Some(trigger) = &meta.defined_in {
         lines.push(format!(
-            "- Defined in trigger: {}",
+            "- **Defined in trigger:** {}",
             sanitize_markdown(trigger)
         ));
     }
     if let Some(limit) = meta.sequence_limit {
-        lines.push(format!("- Sequence limit: {}", limit));
+        lines.push(format!("- **Sequence limit:** {}", limit));
     }
     if lines.len() == 1 {
-        lines.push("- Defined in trigger: (unknown)".to_string());
+        lines.push("- **Defined in trigger:** (unknown)".to_string());
     }
     lines.join("\n")
 }
 
 fn format_set_hover(id: &str, meta: &SetMetadata, relative_path: Option<&str>) -> String {
-    let mut lines = vec![format!("**Set:** {}", sanitize_markdown(id))];
+    let mut lines = vec![entity_title_line("SET", None, id)];
     if let Some(location_line) = definition_path_line(relative_path) {
         lines.push(location_line);
     }
     lines.push(format!(
-        "- Rooms: {}",
+        "- **Rooms:** {}",
         if meta.rooms.is_empty() {
             "(none)".to_string()
         } else {
-            meta.rooms.join(", ")
+            meta.rooms
+                .iter()
+                .map(|room| sanitize_markdown(room))
+                .collect::<Vec<_>>()
+                .join(", ")
         }
     ));
     lines.join("\n")
 }
 
 fn definition_path_line(relative_path: Option<&str>) -> Option<String> {
-    relative_path.map(|path| format!("- File: {}", sanitize_markdown(path)))
+    relative_path.map(|path| {
+        let shortened = shorten_to_data_root(path);
+        format!("- **File:** {}", sanitize_markdown(&shortened))
+    })
+}
+
+fn entity_title_line(kind: &str, display_name: Option<&str>, id: &str) -> String {
+    let kind_label = kind.to_ascii_uppercase();
+    let sanitized_id = sanitize_markdown(id);
+    let display = display_name
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(sanitize_markdown);
+
+    if let Some(name) = display {
+        if name == sanitized_id {
+            format!("**{}:** {}", kind_label, sanitized_id)
+        } else {
+            format!("**{}:** {} ({})", kind_label, name, sanitized_id)
+        }
+    } else {
+        format!("**{}:** {}", kind_label, sanitized_id)
+    }
+}
+
+fn shorten_to_data_root(path: &str) -> String {
+    let normalized = path.replace('\\', "/");
+    let components: Vec<&str> = normalized
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect();
+
+    if let Some(idx) = components
+        .iter()
+        .position(|segment| segment.eq_ignore_ascii_case("data"))
+    {
+        if idx + 2 <= components.len() {
+            let world_relative = components[idx + 2..].join("/");
+            if !world_relative.is_empty() {
+                return world_relative;
+            }
+        }
+    }
+
+    components.join("/")
 }
 
 fn describe_movability(movability: Option<&Movability>) -> String {
@@ -1301,6 +1343,25 @@ fn describe_movability(movability: Option<&Movability>) -> String {
             _ => "restricted".to_string(),
         },
         None => "(none)".to_string(),
+    }
+}
+
+fn truncate_description(value: Option<&str>) -> String {
+    match value {
+        Some(text) if !text.trim().is_empty() => {
+            let sanitized = sanitize_markdown(text);
+            truncate_string(sanitized, HOVER_DESCRIPTION_MAX_CHARS)
+        }
+        _ => "(missing)".to_string(),
+    }
+}
+
+fn truncate_string(value: String, max_chars: usize) -> String {
+    if value.chars().count() <= max_chars {
+        value
+    } else {
+        let truncated: String = value.chars().take(max_chars).collect();
+        format!("{}...", truncated)
     }
 }
 
@@ -1503,10 +1564,40 @@ fn extract_item_metadata(
                     }
                 }
                 "item_ability_stmt" => {
-                    abilities.push(sanitize_markdown(slice_text(text, &child).trim()));
+                    let ability = child
+                        .child_by_field_name("ability")
+                        .map(|node| sanitize_markdown(slice_text(text, &node).trim()));
+                    let target = child
+                        .child_by_field_name("target_id")
+                        .map(|node| sanitize_markdown(slice_text(text, &node).trim()));
+
+                    match ability {
+                        Some(name) => {
+                            if let Some(target) = target {
+                                abilities.push(format!("{} ({})", name, target));
+                            } else {
+                                abilities.push(name);
+                            }
+                        }
+                        None => {
+                            abilities.push(sanitize_markdown(slice_text(text, &child).trim()));
+                        }
+                    }
                 }
                 "item_requires_stmt" => {
-                    requirements.push(sanitize_markdown(slice_text(text, &child).trim()));
+                    let ability = child
+                        .child_by_field_name("ability")
+                        .map(|node| sanitize_markdown(slice_text(text, &node).trim()));
+                    let interaction = child
+                        .child_by_field_name("interaction")
+                        .map(|node| sanitize_markdown(slice_text(text, &node).trim()));
+
+                    match (ability, interaction) {
+                        (Some(ability), Some(interaction)) => {
+                            requirements.push(format!("{} -> {}", ability, interaction));
+                        }
+                        _ => requirements.push(sanitize_markdown(slice_text(text, &child).trim())),
+                    }
                 }
                 _ => {}
             }
@@ -1685,7 +1776,10 @@ fn collect_player_starts(
 /// Parses the numeric suffix of a flag reference like `quest#3`, returning the index if present.
 fn flag_sequence_index(raw_id: &str) -> Option<i64> {
     let (_, suffix) = raw_id.split_once('#')?;
-    let digits: String = suffix.chars().take_while(|ch| ch.is_ascii_digit()).collect();
+    let digits: String = suffix
+        .chars()
+        .take_while(|ch| ch.is_ascii_digit())
+        .collect();
     if digits.is_empty() {
         return None;
     }
@@ -1864,8 +1958,8 @@ fn symbol_kind_from_syntax<'tree>(node: Node<'tree>, offset: usize) -> Option<Sy
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tree_sitter::Parser;
     use tower_lsp::lsp_types::Url;
+    use tree_sitter::Parser;
 
     fn parse_source(source: &str) -> tree_sitter::Tree {
         let mut parser = Parser::new();
@@ -1966,10 +2060,29 @@ mod tests {
         };
 
         let hover = format_room_hover("test-room", &meta, Some("rooms/test-room.amble"));
-        assert!(hover.contains("**Room:** test-room"));
-        assert!(hover.contains("Test Room"));
+        assert!(hover.contains("**ROOM:** Test Room (test-room)"));
         assert!(hover.contains("north-hall"));
-        assert!(hover.contains("File: rooms/test-room.amble"));
+        assert!(hover.contains("**File:** rooms/test-room.amble"));
+    }
+
+    #[test]
+    fn room_hover_truncates_long_description() {
+        let long_desc: String = std::iter::repeat('a').take(400).collect();
+        let meta = RoomMetadata {
+            name: Some("Test Room".into()),
+            description: Some(long_desc.clone()),
+            exits: vec![],
+        };
+
+        let hover = format_room_hover("test-room", &meta, None);
+        let expected = format!(
+            "- **Description:** {}...",
+            "a".repeat(HOVER_DESCRIPTION_MAX_CHARS)
+        );
+
+        assert!(hover.contains("- **Description:** "));
+        assert!(!hover.contains(&long_desc));
+        assert!(hover.contains(&expected));
     }
 
     #[test]
@@ -1980,15 +2093,98 @@ mod tests {
             movability: Some(Movability::Free),
             location: Some("room lab".into()),
             container_state: Some("closed".into()),
-            abilities: vec!["ability Unlock".into()],
+            abilities: vec!["Unlock".into()],
             requirements: vec!["requires ability Use to interact".into()],
         };
 
         let hover = format_item_hover("widget", &meta, Some("items/widget.amble"));
-        assert!(hover.contains("Abilities: ability Unlock"));
-        assert!(hover.contains("Requirements: requires ability Use to interact"));
-        assert!(hover.contains("Movability: free"));
-        assert!(hover.contains("File: items/widget.amble"));
+        assert!(hover.contains("**ITEM:** Widget (widget)"));
+        assert!(hover.contains("**Abilities:** Unlock"));
+        assert!(hover.contains("**Requires:** requires ability Use to interact"));
+        assert!(hover.contains("**Movability:** free"));
+        assert!(hover.contains("**File:** items/widget.amble"));
+    }
+
+    #[test]
+    fn item_hover_formats_requirement_pairs() {
+        let meta = ItemMetadata {
+            name: Some("Widget".into()),
+            description: Some("Useful widget".into()),
+            movability: Some(Movability::Free),
+            location: Some("room lab".into()),
+            container_state: Some("closed".into()),
+            abilities: vec![],
+            requirements: vec!["ignite -> burn".into(), "cutWood -> cut".into()],
+        };
+
+        let hover = format_item_hover("widget", &meta, None);
+        assert!(hover.contains("**Requires:** ignite -> burn, cutWood -> cut"));
+    }
+
+    #[test]
+    fn item_hover_formats_ability_targets() {
+        let meta = ItemMetadata {
+            name: Some("Widget".into()),
+            description: Some("Useful widget".into()),
+            movability: Some(Movability::Free),
+            location: Some("room lab".into()),
+            container_state: Some("closed".into()),
+            abilities: vec!["Unlock (security_crate)".into()],
+            requirements: vec![],
+        };
+
+        let hover = format_item_hover("widget", &meta, None);
+        assert!(hover.contains("**Abilities:** Unlock (security_crate)"));
+    }
+
+    #[test]
+    fn hover_paths_trim_data_root_prefix() {
+        let meta = ItemMetadata {
+            name: Some("Utility".into()),
+            description: Some("Helpful".into()),
+            movability: Some(Movability::Free),
+            location: Some("room hub".into()),
+            container_state: None,
+            abilities: vec![],
+            requirements: vec![],
+        };
+
+        let hover = format_item_hover(
+            "utility_item",
+            &meta,
+            Some("amble_script/data/Amble/global/useful_items.amble"),
+        );
+
+        assert!(hover.contains("**ITEM:** Utility (utility_item)"));
+        assert!(hover.contains("**File:** global/useful_items.amble"));
+    }
+
+    #[test]
+    fn extract_item_metadata_formats_requirements() {
+        let source = "item widget {\n    requires ignite to burn\n    requires cutWood to cut\n}\n";
+        let tree = parse_source(source);
+        let root = tree.root_node();
+        let item_node =
+            named_child_by_kind(&root, "item_def").expect("missing item_def for requirements test");
+        let (_, _, _, _, _, _, requirements) = extract_item_metadata(&item_node, source);
+        assert_eq!(
+            requirements,
+            vec!["ignite -> burn".to_string(), "cutWood -> cut".to_string()]
+        );
+    }
+
+    #[test]
+    fn extract_item_metadata_formats_abilities() {
+        let source = "item widget {\n    ability Unlock security_crate\n    ability Read\n}\n";
+        let tree = parse_source(source);
+        let root = tree.root_node();
+        let item_node =
+            named_child_by_kind(&root, "item_def").expect("missing item_def for abilities test");
+        let (_, _, _, _, _, abilities, _) = extract_item_metadata(&item_node, source);
+        assert_eq!(
+            abilities,
+            vec!["Unlock (security_crate)".to_string(), "Read".to_string()]
+        );
     }
 
     fn sample_location() -> SymbolLocation {
