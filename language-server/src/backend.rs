@@ -1,7 +1,7 @@
 use crate::analysis::{format_hover, PlayerStart};
 use crate::formatter;
 use crate::queries::Queries;
-use crate::symbols::{SymbolKind, SymbolStore};
+use crate::symbols::{SymbolDefinition, SymbolIndex, SymbolKind, SymbolMetadata, SymbolStore};
 use crate::text::DocumentStore;
 use dashmap::DashMap;
 use std::collections::HashMap;
@@ -43,6 +43,58 @@ impl Backend {
             queries: Arc::new(Queries::new()),
             scanned_directories: Arc::new(DashMap::new()),
             player_starts: Arc::new(DashMap::new()),
+        }
+    }
+
+    fn collect_document_symbols(&self, uri: &Url) -> Vec<DocumentSymbol> {
+        let mut symbols = Vec::new();
+        self.push_document_symbols_for_index(uri, SymbolKind::Room, &self.symbols.rooms, &mut symbols);
+        self.push_document_symbols_for_index(uri, SymbolKind::Item, &self.symbols.items, &mut symbols);
+        self.push_document_symbols_for_index(uri, SymbolKind::Npc, &self.symbols.npcs, &mut symbols);
+        self.push_document_symbols_for_index(uri, SymbolKind::Flag, &self.symbols.flags, &mut symbols);
+        self.push_document_symbols_for_index(uri, SymbolKind::Set, &self.symbols.sets, &mut symbols);
+        symbols
+    }
+
+    fn push_document_symbols_for_index(
+        &self,
+        uri: &Url,
+        kind: SymbolKind,
+        index: &SymbolIndex,
+        output: &mut Vec<DocumentSymbol>,
+    ) {
+        for entry in index.definitions_iter() {
+            if entry.value().location.uri == *uri {
+                let name = entry.key().clone();
+                let definition = entry.value().clone();
+                output.push(document_symbol_from_definition(&name, kind, &definition));
+            }
+        }
+    }
+
+    fn collect_workspace_symbols(&self, query: &str) -> Vec<SymbolInformation> {
+        let mut symbols = Vec::new();
+        self.push_workspace_symbols_for_index(query, SymbolKind::Room, &self.symbols.rooms, &mut symbols);
+        self.push_workspace_symbols_for_index(query, SymbolKind::Item, &self.symbols.items, &mut symbols);
+        self.push_workspace_symbols_for_index(query, SymbolKind::Npc, &self.symbols.npcs, &mut symbols);
+        self.push_workspace_symbols_for_index(query, SymbolKind::Flag, &self.symbols.flags, &mut symbols);
+        self.push_workspace_symbols_for_index(query, SymbolKind::Set, &self.symbols.sets, &mut symbols);
+        symbols
+    }
+
+    fn push_workspace_symbols_for_index(
+        &self,
+        query: &str,
+        kind: SymbolKind,
+        index: &SymbolIndex,
+        output: &mut Vec<SymbolInformation>,
+    ) {
+        for entry in index.definitions_iter() {
+            let name = entry.key().clone();
+            let definition = entry.value().clone();
+            if query_matches_symbol(&name, definition_detail(&definition).as_deref(), query) {
+                output.push(workspace_symbol_from_definition(&name, kind, &definition));
+            }
         }
     }
 
@@ -113,6 +165,91 @@ impl Backend {
     }
 }
 
+fn document_symbol_from_definition(
+    name: &str,
+    kind: SymbolKind,
+    definition: &SymbolDefinition,
+) -> DocumentSymbol {
+    #[allow(deprecated)]
+    DocumentSymbol {
+        name: name.to_string(),
+        detail: definition_detail(definition),
+        kind: lsp_symbol_kind(kind),
+        tags: None,
+        deprecated: None,
+        range: definition.location.range,
+        selection_range: definition.location.rename_range(),
+        children: None,
+    }
+}
+
+fn workspace_symbol_from_definition(
+    name: &str,
+    kind: SymbolKind,
+    definition: &SymbolDefinition,
+) -> SymbolInformation {
+    #[allow(deprecated)]
+    SymbolInformation {
+        name: name.to_string(),
+        kind: lsp_symbol_kind(kind),
+        tags: None,
+        deprecated: None,
+        location: Location {
+            uri: definition.location.uri.clone(),
+            range: definition.location.range,
+        },
+        container_name: None,
+    }
+}
+
+fn definition_detail(definition: &SymbolDefinition) -> Option<String> {
+    match &definition.metadata {
+        SymbolMetadata::Room(meta) => meta
+            .name
+            .clone()
+            .or_else(|| meta.description.clone()),
+        SymbolMetadata::Item(meta) => meta
+            .name
+            .clone()
+            .or_else(|| meta.location.clone())
+            .or_else(|| meta.description.clone()),
+        SymbolMetadata::Npc(meta) => meta
+            .name
+            .clone()
+            .or_else(|| meta.location.clone())
+            .or_else(|| meta.description.clone()),
+        SymbolMetadata::Flag(meta) => meta.defined_in.clone(),
+        SymbolMetadata::Set(meta) => {
+            if meta.rooms.is_empty() {
+                Some("No rooms assigned".to_string())
+            } else {
+                Some(format!("Rooms: {}", meta.rooms.join(", ")))
+            }
+        }
+    }
+}
+
+fn lsp_symbol_kind(kind: SymbolKind) -> tower_lsp::lsp_types::SymbolKind {
+    match kind {
+        SymbolKind::Room => tower_lsp::lsp_types::SymbolKind::CLASS,
+        SymbolKind::Item => tower_lsp::lsp_types::SymbolKind::STRUCT,
+        SymbolKind::Npc => tower_lsp::lsp_types::SymbolKind::INTERFACE,
+        SymbolKind::Flag => tower_lsp::lsp_types::SymbolKind::ENUM_MEMBER,
+        SymbolKind::Set => tower_lsp::lsp_types::SymbolKind::NAMESPACE,
+    }
+}
+
+fn query_matches_symbol(name: &str, detail: Option<&str>, query: &str) -> bool {
+    if query.is_empty() {
+        return true;
+    }
+    let name_match = name.to_lowercase().contains(query);
+    let detail_match = detail
+        .map(|value| value.to_lowercase().contains(query))
+        .unwrap_or(false);
+    name_match || detail_match
+}
+
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
@@ -129,6 +266,8 @@ impl LanguageServer for Backend {
                 )),
                 definition_provider: Some(OneOf::Left(true)),
                 references_provider: Some(OneOf::Left(true)),
+                document_symbol_provider: Some(OneOf::Left(true)),
+                workspace_symbol_provider: Some(OneOf::Left(true)),
                 completion_provider: Some(CompletionOptions::default()),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 document_formatting_provider: Some(OneOf::Left(true)),
@@ -198,6 +337,32 @@ impl LanguageServer for Backend {
         }
 
         Ok(None)
+    }
+
+    async fn document_symbol(
+        &self,
+        params: DocumentSymbolParams,
+    ) -> Result<Option<DocumentSymbolResponse>> {
+        let uri = params.text_document.uri;
+        let symbols = self.collect_document_symbols(&uri);
+        if symbols.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(DocumentSymbolResponse::Nested(symbols)))
+        }
+    }
+
+    async fn symbol(
+        &self,
+        params: WorkspaceSymbolParams,
+    ) -> Result<Option<Vec<SymbolInformation>>> {
+        let query = params.query.to_lowercase();
+        let symbols = self.collect_workspace_symbols(&query);
+        if symbols.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(symbols))
+        }
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
