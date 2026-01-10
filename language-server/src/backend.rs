@@ -22,6 +22,7 @@ pub struct Backend {
     pub(crate) parser: Arc<parking_lot::Mutex<Parser>>,
     pub(crate) queries: Arc<Queries>,
     pub(crate) scanned_directories: Arc<DashMap<PathBuf, Option<SystemTime>>>,
+    /// Cached `player_start` nodes per document; used for workspace-level diagnostics.
     pub(crate) player_starts: Arc<DashMap<String, Vec<PlayerStart>>>,
 }
 

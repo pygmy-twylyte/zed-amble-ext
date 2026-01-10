@@ -16,6 +16,7 @@ use walkdir::{DirEntry, WalkDir};
 
 const IGNORED_DIRECTORIES: &[&str] = &[".git", "node_modules", "target", "dist", "build"];
 
+/// Captures a `player_start` location plus source span for diagnostics.
 #[derive(Debug, Clone)]
 pub(crate) struct PlayerStart {
     pub room_id: String,
@@ -757,6 +758,8 @@ impl Backend {
             .await;
     }
 
+    /// Flags duplicate definitions, downgrading flags to hints because multiple triggers
+    /// may intentionally set the same game state.
     fn append_duplicate_definition_diagnostics(&self, uri: &Url, diagnostics: &mut Vec<Diagnostic>) {
         self.append_duplicate_diagnostics_for_index(uri, diagnostics, SymbolKind::Room, &self.symbols.rooms);
         self.append_duplicate_diagnostics_for_index(uri, diagnostics, SymbolKind::Item, &self.symbols.items);
@@ -801,6 +804,8 @@ impl Backend {
         }
     }
 
+    /// Emits a lightweight reminder when multiple triggers define the same flag. Flags represent
+    /// global state, so we only warn to help authors keep alternate solutions aligned.
     fn append_duplicate_flag_diagnostics(&self, uri: &Url, diagnostics: &mut Vec<Diagnostic>) {
         for entry in self.symbols.flags.duplicate_definitions_iter() {
             let id = entry.key().clone();
@@ -921,6 +926,7 @@ impl Backend {
         }
     }
 
+    /// Ensures there is at least one `player_start`, and warns if multiple start rooms exist.
     fn append_world_consistency_diagnostics(&self, uri: &Url, diagnostics: &mut Vec<Diagnostic>) {
         let start_entries: Vec<PlayerStart> = self
             .player_starts
@@ -970,6 +976,8 @@ impl Backend {
         }
     }
 
+    /// Validates that sequence-style flag references stay within bounds and avoids referencing
+    /// non-sequence flags with a `#N` suffix.
     fn append_flag_sequence_diagnostics(&self, uri: &Url, diagnostics: &mut Vec<Diagnostic>) {
         for entry in self.symbols.flags.definitions_iter() {
             let id = entry.key().clone();
@@ -1642,6 +1650,7 @@ fn extract_set_rooms(set_node: &Node, text: &str) -> Vec<String> {
     }
 }
 
+/// Walks the syntax tree and records every `player_start room ...` statement for diagnostics.
 fn collect_player_starts(
     document: &Document,
     root: Node,
@@ -1673,6 +1682,7 @@ fn collect_player_starts(
     result
 }
 
+/// Parses the numeric suffix of a flag reference like `quest#3`, returning the index if present.
 fn flag_sequence_index(raw_id: &str) -> Option<i64> {
     let (_, suffix) = raw_id.split_once('#')?;
     let digits: String = suffix.chars().take_while(|ch| ch.is_ascii_digit()).collect();
