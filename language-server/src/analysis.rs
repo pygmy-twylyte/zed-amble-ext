@@ -16,6 +16,13 @@ use walkdir::{DirEntry, WalkDir};
 
 const IGNORED_DIRECTORIES: &[&str] = &[".git", "node_modules", "target", "dist", "build"];
 
+#[derive(Debug, Clone)]
+pub(crate) struct PlayerStart {
+    pub room_id: String,
+    pub range: Range,
+    pub uri: Url,
+}
+
 impl Backend {
     pub(crate) fn update_workspace_roots(&self, params: &InitializeParams) {
         let mut roots = self.workspace_roots.write();
@@ -567,9 +574,11 @@ impl Backend {
             }
         }
 
+        let player_starts = collect_player_starts(&document, root_node, text, uri);
+        self.player_starts.insert(uri_str.clone(), player_starts);
+
         self.document_symbols.insert(uri_str.clone(), occurrences);
-        self.documents
-            .insert(uri_str, Document::new(text.to_string()));
+        self.documents.insert(uri_str, document);
     }
 
     pub(crate) fn get_symbol_at_position(
@@ -740,6 +749,8 @@ impl Backend {
         self.append_duplicate_definition_diagnostics(uri, &mut diagnostics);
         self.append_unused_definition_diagnostics(uri, &mut diagnostics);
         self.append_metadata_diagnostics(uri, &mut diagnostics);
+        self.append_world_consistency_diagnostics(uri, &mut diagnostics);
+        self.append_flag_sequence_diagnostics(uri, &mut diagnostics);
 
         self.client
             .publish_diagnostics(uri.clone(), diagnostics, None)
@@ -750,7 +761,7 @@ impl Backend {
         self.append_duplicate_diagnostics_for_index(uri, diagnostics, SymbolKind::Room, &self.symbols.rooms);
         self.append_duplicate_diagnostics_for_index(uri, diagnostics, SymbolKind::Item, &self.symbols.items);
         self.append_duplicate_diagnostics_for_index(uri, diagnostics, SymbolKind::Npc, &self.symbols.npcs);
-        self.append_duplicate_diagnostics_for_index(uri, diagnostics, SymbolKind::Flag, &self.symbols.flags);
+        self.append_duplicate_flag_diagnostics(uri, diagnostics);
         self.append_duplicate_diagnostics_for_index(uri, diagnostics, SymbolKind::Set, &self.symbols.sets);
     }
 
@@ -783,6 +794,39 @@ impl Backend {
                         message: format!("Duplicate {} definition: '{}'", kind.label(), id),
                         related_information: None,
                         tags: None,
+                        data: None,
+                    });
+                }
+            }
+        }
+    }
+
+    fn append_duplicate_flag_diagnostics(&self, uri: &Url, diagnostics: &mut Vec<Diagnostic>) {
+        for entry in self.symbols.flags.duplicate_definitions_iter() {
+            let id = entry.key().clone();
+            let duplicates = entry.value().clone();
+            drop(entry);
+
+            let mut definitions = Vec::new();
+            if let Some(primary) = self.symbols.flags.definition(&id) {
+                definitions.push(primary.clone());
+            }
+            definitions.extend(duplicates);
+
+            for def in definitions {
+                if def.location.uri == *uri {
+                    diagnostics.push(Diagnostic {
+                        range: def.location.range,
+                        severity: Some(DiagnosticSeverity::HINT),
+                        code: None,
+                        code_description: None,
+                        source: Some("amble-lsp".to_string()),
+                        message: format!(
+                            "Flag '{}' is defined in multiple triggers; ensure these paths stay in sync",
+                            id
+                        ),
+                        related_information: None,
+                        tags: Some(vec![DiagnosticTag::UNNECESSARY]),
                         data: None,
                     });
                 }
@@ -873,6 +917,112 @@ impl Backend {
                     tags: None,
                     data: None,
                 });
+            }
+        }
+    }
+
+    fn append_world_consistency_diagnostics(&self, uri: &Url, diagnostics: &mut Vec<Diagnostic>) {
+        let start_entries: Vec<PlayerStart> = self
+            .player_starts
+            .iter()
+            .flat_map(|entry| entry.value().clone())
+            .collect();
+
+        if start_entries.is_empty() {
+            diagnostics.push(Diagnostic {
+                range: Range {
+                    start: Position::default(),
+                    end: Position::default(),
+                },
+                severity: Some(DiagnosticSeverity::WARNING),
+                code: None,
+                code_description: None,
+                source: Some("amble-lsp".to_string()),
+                message: "No player start room defined in this workspace".to_string(),
+                related_information: None,
+                tags: None,
+                data: None,
+            });
+            return;
+        }
+
+        if start_entries.len() > 1 {
+            let rooms: Vec<String> = start_entries
+                .iter()
+                .map(|start| start.room_id.clone())
+                .collect();
+            for start in start_entries.iter().filter(|start| &start.uri == uri) {
+                diagnostics.push(Diagnostic {
+                    range: start.range.clone(),
+                    severity: Some(DiagnosticSeverity::WARNING),
+                    code: None,
+                    code_description: None,
+                    source: Some("amble-lsp".to_string()),
+                    message: format!(
+                        "Multiple player starts defined (rooms: {})",
+                        rooms.join(", ")
+                    ),
+                    related_information: None,
+                    tags: None,
+                    data: None,
+                });
+            }
+        }
+    }
+
+    fn append_flag_sequence_diagnostics(&self, uri: &Url, diagnostics: &mut Vec<Diagnostic>) {
+        for entry in self.symbols.flags.definitions_iter() {
+            let id = entry.key().clone();
+            let definition = entry.value().clone();
+            drop(entry);
+
+            let meta = match &definition.metadata {
+                SymbolMetadata::Flag(meta) => meta.clone(),
+                _ => continue,
+            };
+
+            if let Some(refs) = self.symbols.flags.references(&id) {
+                for reference in refs.iter() {
+                    if reference.location.uri != *uri {
+                        continue;
+                    }
+                    if let Some(index) = flag_sequence_index(&reference.raw_id) {
+                        if let Some(limit) = meta.sequence_limit {
+                            if index >= limit {
+                                diagnostics.push(Diagnostic {
+                                    range: reference.location.range,
+                                    severity: Some(DiagnosticSeverity::WARNING),
+                                    code: None,
+                                    code_description: None,
+                                    source: Some("amble-lsp".to_string()),
+                                    message: format!(
+                                        "Flag '{}' sequence limit is {} but reference uses index {}",
+                                        id, limit, index
+                                    ),
+                                    related_information: None,
+                                    tags: None,
+                                    data: None,
+                                });
+                            }
+                        } else {
+                            diagnostics.push(Diagnostic {
+                                range: reference.location.range,
+                                severity: Some(DiagnosticSeverity::WARNING),
+                                code: None,
+                                code_description: None,
+                                source: Some("amble-lsp".to_string()),
+                                message: format!(
+                                    "Flag '{}' is defined as a single flag but referenced as '{}'",
+                                    id, reference.raw_id
+                                ),
+                                related_information: None,
+                                tags: None,
+                                data: None,
+                            });
+                        }
+                    }
+                }
+                drop(refs);
             }
         }
     }
@@ -1492,6 +1642,46 @@ fn extract_set_rooms(set_node: &Node, text: &str) -> Vec<String> {
     }
 }
 
+fn collect_player_starts(
+    document: &Document,
+    root: Node,
+    text: &str,
+    uri: &Url,
+) -> Vec<PlayerStart> {
+    let mut result = Vec::new();
+    let mut stack = vec![root];
+    while let Some(node) = stack.pop() {
+        if node.kind() == "player_start" {
+            if let Some(room_node) = node.child_by_field_name("room_id") {
+                let room_id = slice_text(text, &room_node).trim().to_string();
+                if !room_id.is_empty() {
+                    let range = range_from_node(document, &room_node);
+                    result.push(PlayerStart {
+                        room_id,
+                        range,
+                        uri: uri.clone(),
+                    });
+                }
+            }
+        }
+        let mut cursor = node.walk();
+        for child in node.named_children(&mut cursor) {
+            stack.push(child);
+        }
+    }
+
+    result
+}
+
+fn flag_sequence_index(raw_id: &str) -> Option<i64> {
+    let (_, suffix) = raw_id.split_once('#')?;
+    let digits: String = suffix.chars().take_while(|ch| ch.is_ascii_digit()).collect();
+    if digits.is_empty() {
+        return None;
+    }
+    digits.parse().ok()
+}
+
 fn node_at_offset<'tree>(root: &Node<'tree>, offset: usize) -> Option<Node<'tree>> {
     if offset > root.end_byte() {
         return None;
@@ -1853,5 +2043,13 @@ mod tests {
         assert_eq!(issues.len(), 2);
         assert!(issues.iter().any(|msg| msg.contains("location")));
         assert!(issues.iter().any(|msg| msg.contains("state")));
+    }
+
+    #[test]
+    fn parses_flag_sequence_indices() {
+        assert_eq!(flag_sequence_index("quest#3"), Some(3));
+        assert_eq!(flag_sequence_index("quest#0"), Some(0));
+        assert_eq!(flag_sequence_index("quest"), None);
+        assert_eq!(flag_sequence_index("quest#x5"), None);
     }
 }

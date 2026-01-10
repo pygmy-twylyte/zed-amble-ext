@@ -1,4 +1,4 @@
-use crate::analysis::format_hover;
+use crate::analysis::{format_hover, PlayerStart};
 use crate::formatter;
 use crate::queries::Queries;
 use crate::symbols::{SymbolKind, SymbolStore};
@@ -22,6 +22,7 @@ pub struct Backend {
     pub(crate) parser: Arc<parking_lot::Mutex<Parser>>,
     pub(crate) queries: Arc<Queries>,
     pub(crate) scanned_directories: Arc<DashMap<PathBuf, Option<SystemTime>>>,
+    pub(crate) player_starts: Arc<DashMap<String, Vec<PlayerStart>>>,
 }
 
 impl Backend {
@@ -40,6 +41,7 @@ impl Backend {
             parser: Arc::new(parking_lot::Mutex::new(parser)),
             queries: Arc::new(Queries::new()),
             scanned_directories: Arc::new(DashMap::new()),
+            player_starts: Arc::new(DashMap::new()),
         }
     }
 
