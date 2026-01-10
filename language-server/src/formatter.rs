@@ -315,6 +315,11 @@ impl<'a> ParenthesizedListFormatter<'a> {
 
     fn format_node(&mut self, node: Node) -> bool {
         let indent = Self::line_indent(self.text, node.start_byte());
+
+        if node.kind() == "trigger_def" {
+            self.ensure_trigger_spacing(&node, &indent);
+        }
+
         if let Some(replacement) = self.render_nested(&node, &indent) {
             self.replace(node.start_byte(), node.end_byte(), &replacement);
             return true;
@@ -328,6 +333,48 @@ impl<'a> ParenthesizedListFormatter<'a> {
         }
 
         false
+    }
+
+    fn ensure_trigger_spacing(&mut self, node: &Node, indent: &str) {
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            match child.kind() {
+                "trigger_note" => {
+                    self.ensure_break_before(&child, indent);
+                }
+                "when" => {
+                    self.ensure_break_before(&child, indent);
+                    break;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn ensure_break_before(&mut self, node: &Node, indent: &str) {
+        if let Some(prev) = Self::previous_non_comment_sibling(node) {
+            let start = prev.end_byte();
+            let end = node.start_byte();
+            if start < end {
+                let between = &self.text[start..end];
+                if !between.contains('\n') && !between.is_empty() {
+                    let replacement = format!("\n{}", indent);
+                    self.replace(start, end, &replacement);
+                }
+            }
+        }
+    }
+
+    fn previous_non_comment_sibling<'tree>(node: &Node<'tree>) -> Option<Node<'tree>> {
+        let mut current = node.prev_sibling();
+        while let Some(sibling) = current {
+            if sibling.kind() == "comment" {
+                current = sibling.prev_sibling();
+                continue;
+            }
+            return Some(sibling);
+        }
+        None
     }
 
     fn replace(&mut self, start: usize, end: usize, replacement: &str) {
@@ -458,12 +505,18 @@ impl<'a> ParenthesizedListFormatter<'a> {
         multi.push('\n');
         let item_indent = format!("{}{}", base_indent, "    ");
         for item in items {
-            let normalized = item.trim();
-            if normalized.is_empty() || normalized.chars().all(|ch| ch == ',') {
+            let trimmed = item.trim();
+            if trimmed.is_empty() || trimmed.chars().all(|ch| ch == ',') {
                 continue;
             }
-            multi.push_str(&Self::indent_block(normalized, &item_indent));
-            multi.push(',');
+            let normalized = trimmed.trim_end_matches(',').trim().to_string();
+            if normalized.is_empty() {
+                continue;
+            }
+            multi.push_str(&Self::indent_block(&normalized, &item_indent));
+            if !normalized.starts_with('#') {
+                multi.push(',');
+            }
             multi.push('\n');
         }
         multi.push_str(base_indent);
@@ -525,21 +578,21 @@ mod tests {
     #[test]
     fn formats_any_group_single_line_with_spacing() {
         let source = "trigger \"example\" when always {\n    if any(missing item quest_scroll, has flag quest_started) {\n        do show \"\"\n    }\n}\n";
-        let expected = "trigger \"example\" when always {\n    if any( missing item quest_scroll, has flag quest_started ) {\n        do show \"\"\n    }\n}\n";
+        let expected = "trigger \"example\"\nwhen always {\n    if any( missing item quest_scroll, has flag quest_started ) {\n        do show \"\"\n    }\n}\n";
         assert_eq!(format_document(source), expected);
     }
 
     #[test]
     fn formats_any_group_multiline_with_nested_all() {
         let source = "trigger \"example\" when always {\n    if any(missing item some_item, has flag some_flag, all(with npc guide_bot, flag in progress guide_bot_intro, missing item guide_token)) {\n        do show \"\"\n    }\n}\n";
-        let expected = "trigger \"example\" when always {\n    if any(\n        missing item some_item,\n        has flag some_flag,\n        all(\n            with npc guide_bot,\n            flag in progress guide_bot_intro,\n            missing item guide_token,\n        ),\n    ) {\n        do show \"\"\n    }\n}\n";
+        let expected = "trigger \"example\"\nwhen always {\n    if any(\n        missing item some_item,\n        has flag some_flag,\n        all(\n            with npc guide_bot,\n            flag in progress guide_bot_intro,\n            missing item guide_token,\n        ),\n    ) {\n        do show \"\"\n    }\n}\n";
         assert_eq!(format_document(source), expected);
     }
 
     #[test]
     fn formats_any_group_trailing_commas_without_duplicates() {
         let source = "trigger \"example\" when always {\n    if any(has flag flag_1, has flag flag_2, has flag flag_3,) {\n        do show \"\"\n    }\n}\n";
-        let expected = "trigger \"example\" when always {\n    if any(\n        has flag flag_1,\n        has flag flag_2,\n        has flag flag_3,\n    ) {\n        do show \"\"\n    }\n}\n";
+        let expected = "trigger \"example\"\nwhen always {\n    if any(\n        has flag flag_1,\n        has flag flag_2,\n        has flag flag_3,\n    ) {\n        do show \"\"\n    }\n}\n";
         assert_eq!(format_document(source), expected);
     }
 
@@ -568,6 +621,48 @@ mod tests {
     fn formats_overlay_conditions_multiline_when_three_items() {
         let source = "room entry {\n    overlay if (flag set foo, item present bar, player has item baz) {\n        text \"\"\n    }\n}\n";
         let expected = "room entry {\n    overlay if (\n        flag set foo,\n        item present bar,\n        player has item baz,\n    ) {\n        text \"\"\n    }\n}\n";
+        assert_eq!(format_document(source), expected);
+    }
+
+    #[test]
+    fn comments_in_any_group_do_not_gain_commas() {
+        let source = "trigger \"example\" when always {\n    if any(has flag flag_1,\n        # important note\n        has flag flag_2) {\n        do show \"\"\n    }\n}\n";
+        let expected = "trigger \"example\"\nwhen always {\n    if any(\n        has flag flag_1,\n        # important note\n        has flag flag_2,\n    ) {\n        do show \"\"\n    }\n}\n";
+        assert_eq!(format_document(source), expected);
+    }
+
+    #[test]
+    fn removes_existing_comment_commas_in_any_group() {
+        let source = "trigger \"example\" when always {\n    if any(has flag flag_1,\n        # important note,,,\n        has flag flag_2,) {\n        do show \"\"\n    }\n}\n";
+        let expected = "trigger \"example\"\nwhen always {\n    if any(\n        has flag flag_1,\n        # important note\n        has flag flag_2,\n    ) {\n        do show \"\"\n    }\n}\n";
+        assert_eq!(format_document(source), expected);
+    }
+
+    #[test]
+    fn trigger_when_clause_starts_on_newline() {
+        let source = "trigger \"example\" when always {\n    if any(has flag flag_1, has flag flag_2) {\n        do show \"\"\n    }\n}\n";
+        let expected = "trigger \"example\"\nwhen always {\n    if any( has flag flag_1, has flag flag_2 ) {\n        do show \"\"\n    }\n}\n";
+        assert_eq!(format_document(source), expected);
+    }
+
+    #[test]
+    fn trigger_when_clause_breaks_after_modifiers() {
+        let source = "trigger \"special\" only once note \"alpha\" when enter room foyer {\n    do show \"\"\n}\n";
+        let expected = "trigger \"special\" only once\nnote \"alpha\"\nwhen enter room foyer {\n    do show \"\"\n}\n";
+        assert_eq!(format_document(source), expected);
+    }
+
+    #[test]
+    fn trigger_note_breaks_to_newline() {
+        let source = "trigger \"Trigger Name\" only once note \"dev note about trigger\" when always {\n    do show \"\"\n}\n";
+        let expected = "trigger \"Trigger Name\" only once\nnote \"dev note about trigger\"\nwhen always {\n    do show \"\"\n}\n";
+        assert_eq!(format_document(source), expected);
+    }
+
+    #[test]
+    fn multiple_trigger_notes_each_on_newline() {
+        let source = "trigger \"Example\" note \"note a\" note \"note b\" when always {\n    do show \"\"\n}\n";
+        let expected = "trigger \"Example\"\nnote \"note a\"\nnote \"note b\"\nwhen always {\n    do show \"\"\n}\n";
         assert_eq!(format_document(source), expected);
     }
 }
