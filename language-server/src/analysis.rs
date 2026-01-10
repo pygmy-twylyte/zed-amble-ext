@@ -1,15 +1,15 @@
 use crate::backend::Backend;
 use crate::symbols::{
     sanitize_markdown, FlagMetadata, ItemMetadata, Movability, NpcMetadata, RoomMetadata,
-    SetMetadata, SymbolDefinition, SymbolKind, SymbolLocation, SymbolMetadata, SymbolOccurrence,
-    SymbolReference,
+    SetMetadata, SymbolDefinition, SymbolIndex, SymbolKind, SymbolLocation, SymbolMetadata,
+    SymbolOccurrence, SymbolReference,
 };
 use crate::text::Document;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use tower_lsp::lsp_types::{
-    Diagnostic, DiagnosticSeverity, InitializeParams, Position, Range, Url,
+    Diagnostic, DiagnosticSeverity, DiagnosticTag, InitializeParams, Position, Range, Url,
 };
 use tree_sitter::{Node, QueryCursor, StreamingIterator};
 use walkdir::{DirEntry, WalkDir};
@@ -737,10 +737,188 @@ impl Backend {
             }
         }
 
+        self.append_duplicate_definition_diagnostics(uri, &mut diagnostics);
+        self.append_unused_definition_diagnostics(uri, &mut diagnostics);
+        self.append_metadata_diagnostics(uri, &mut diagnostics);
+
         self.client
             .publish_diagnostics(uri.clone(), diagnostics, None)
             .await;
     }
+
+    fn append_duplicate_definition_diagnostics(&self, uri: &Url, diagnostics: &mut Vec<Diagnostic>) {
+        self.append_duplicate_diagnostics_for_index(uri, diagnostics, SymbolKind::Room, &self.symbols.rooms);
+        self.append_duplicate_diagnostics_for_index(uri, diagnostics, SymbolKind::Item, &self.symbols.items);
+        self.append_duplicate_diagnostics_for_index(uri, diagnostics, SymbolKind::Npc, &self.symbols.npcs);
+        self.append_duplicate_diagnostics_for_index(uri, diagnostics, SymbolKind::Flag, &self.symbols.flags);
+        self.append_duplicate_diagnostics_for_index(uri, diagnostics, SymbolKind::Set, &self.symbols.sets);
+    }
+
+    fn append_duplicate_diagnostics_for_index(
+        &self,
+        uri: &Url,
+        diagnostics: &mut Vec<Diagnostic>,
+        kind: SymbolKind,
+        index: &SymbolIndex,
+    ) {
+        for entry in index.duplicate_definitions_iter() {
+            let id = entry.key().clone();
+            let duplicates = entry.value().clone();
+            drop(entry);
+
+            let mut definitions = Vec::new();
+            if let Some(primary) = index.definition(&id) {
+                definitions.push(primary.clone());
+            }
+            definitions.extend(duplicates);
+
+            for def in definitions {
+                if def.location.uri == *uri {
+                    diagnostics.push(Diagnostic {
+                        range: def.location.range,
+                        severity: Some(DiagnosticSeverity::ERROR),
+                        code: None,
+                        code_description: None,
+                        source: Some("amble-lsp".to_string()),
+                        message: format!("Duplicate {} definition: '{}'", kind.label(), id),
+                        related_information: None,
+                        tags: None,
+                        data: None,
+                    });
+                }
+            }
+        }
+    }
+
+    fn append_unused_definition_diagnostics(&self, uri: &Url, diagnostics: &mut Vec<Diagnostic>) {
+        self.append_unused_for_index(uri, diagnostics, SymbolKind::Room, &self.symbols.rooms);
+        self.append_unused_for_index(uri, diagnostics, SymbolKind::Item, &self.symbols.items);
+        self.append_unused_for_index(uri, diagnostics, SymbolKind::Npc, &self.symbols.npcs);
+        self.append_unused_for_index(uri, diagnostics, SymbolKind::Flag, &self.symbols.flags);
+        self.append_unused_for_index(uri, diagnostics, SymbolKind::Set, &self.symbols.sets);
+    }
+
+    fn append_unused_for_index(
+        &self,
+        uri: &Url,
+        diagnostics: &mut Vec<Diagnostic>,
+        kind: SymbolKind,
+        index: &SymbolIndex,
+    ) {
+        for entry in index.definitions_iter() {
+            let id = entry.key().clone();
+            let definition = entry.value().clone();
+            drop(entry);
+
+            if definition.location.uri != *uri {
+                continue;
+            }
+
+            let has_references = {
+                if let Some(refs) = index.references(&id) {
+                    let used = !refs.is_empty();
+                    drop(refs);
+                    used
+                } else {
+                    false
+                }
+            };
+
+            if !has_references {
+                diagnostics.push(Diagnostic {
+                    range: definition.location.range,
+                    severity: Some(DiagnosticSeverity::HINT),
+                    code: None,
+                    code_description: None,
+                    source: Some("amble-lsp".to_string()),
+                    message: format!("{} '{}' is never referenced", kind.label(), id),
+                    related_information: None,
+                    tags: Some(vec![DiagnosticTag::UNNECESSARY]),
+                    data: None,
+                });
+            }
+        }
+    }
+
+    fn append_metadata_diagnostics(&self, uri: &Url, diagnostics: &mut Vec<Diagnostic>) {
+        self.append_metadata_for_index(uri, diagnostics, &self.symbols.rooms);
+        self.append_metadata_for_index(uri, diagnostics, &self.symbols.items);
+        self.append_metadata_for_index(uri, diagnostics, &self.symbols.npcs);
+    }
+
+    fn append_metadata_for_index(
+        &self,
+        uri: &Url,
+        diagnostics: &mut Vec<Diagnostic>,
+        index: &SymbolIndex,
+    ) {
+        for entry in index.definitions_iter() {
+            let id = entry.key().clone();
+            let definition = entry.value().clone();
+            drop(entry);
+
+            if definition.location.uri != *uri {
+                continue;
+            }
+
+            for message in metadata_issues_for_definition(&id, &definition) {
+                diagnostics.push(Diagnostic {
+                    range: definition.location.range,
+                    severity: Some(DiagnosticSeverity::WARNING),
+                    code: None,
+                    code_description: None,
+                    source: Some("amble-lsp".to_string()),
+                    message,
+                    related_information: None,
+                    tags: None,
+                    data: None,
+                });
+            }
+        }
+    }
+}
+
+fn metadata_issues_for_definition(id: &str, def: &SymbolDefinition) -> Vec<String> {
+    match &def.metadata {
+        SymbolMetadata::Room(meta) => {
+            let mut issues = Vec::new();
+            if text_missing(&meta.name) {
+                issues.push(format!("Room '{}' is missing a name", id));
+            }
+            if text_missing(&meta.description) {
+                issues.push(format!("Room '{}' is missing a description", id));
+            }
+            issues
+        }
+        SymbolMetadata::Item(meta) => {
+            let mut issues = Vec::new();
+            if text_missing(&meta.location) {
+                issues.push(format!("Item '{}' is missing a location", id));
+            }
+            if meta.movability.is_none() {
+                issues.push(format!("Item '{}' is missing a movability setting", id));
+            }
+            issues
+        }
+        SymbolMetadata::Npc(meta) => {
+            let mut issues = Vec::new();
+            if text_missing(&meta.location) {
+                issues.push(format!("NPC '{}' is missing a location", id));
+            }
+            if text_missing(&meta.state) {
+                issues.push(format!("NPC '{}' is missing a starting state", id));
+            }
+            issues
+        }
+        _ => Vec::new(),
+    }
+}
+
+fn text_missing(value: &Option<String>) -> bool {
+    value
+        .as_ref()
+        .map(|text| text.trim().is_empty())
+        .unwrap_or(true)
 }
 
 fn should_visit_entry(entry: &DirEntry) -> bool {
@@ -1487,6 +1665,7 @@ fn symbol_kind_from_syntax<'tree>(node: Node<'tree>, offset: usize) -> Option<Sy
 mod tests {
     use super::*;
     use tree_sitter::Parser;
+    use tower_lsp::lsp_types::Url;
 
     fn parse_source(source: &str) -> tree_sitter::Tree {
         let mut parser = Parser::new();
@@ -1610,5 +1789,69 @@ mod tests {
         assert!(hover.contains("Requirements: requires ability Use to interact"));
         assert!(hover.contains("Movability: free"));
         assert!(hover.contains("File: items/widget.amble"));
+    }
+
+    fn sample_location() -> SymbolLocation {
+        SymbolLocation {
+            uri: Url::parse("file:///test.amble").unwrap(),
+            range: Range {
+                start: Position::default(),
+                end: Position::default(),
+            },
+            rename_range: None,
+        }
+    }
+
+    #[test]
+    fn detects_missing_room_metadata_fields() {
+        let def = SymbolDefinition {
+            location: sample_location(),
+            metadata: SymbolMetadata::Room(RoomMetadata {
+                name: None,
+                description: None,
+                exits: vec![],
+            }),
+        };
+        let issues = metadata_issues_for_definition("room_a", &def);
+        assert_eq!(issues.len(), 2);
+        assert!(issues.iter().any(|msg| msg.contains("name")));
+        assert!(issues.iter().any(|msg| msg.contains("description")));
+    }
+
+    #[test]
+    fn detects_missing_item_metadata_fields() {
+        let def = SymbolDefinition {
+            location: sample_location(),
+            metadata: SymbolMetadata::Item(ItemMetadata {
+                name: Some("Item".into()),
+                description: Some("desc".into()),
+                movability: None,
+                location: None,
+                container_state: None,
+                abilities: vec![],
+                requirements: vec![],
+            }),
+        };
+        let issues = metadata_issues_for_definition("item_a", &def);
+        assert_eq!(issues.len(), 2);
+        assert!(issues.iter().any(|msg| msg.contains("location")));
+        assert!(issues.iter().any(|msg| msg.contains("movability")));
+    }
+
+    #[test]
+    fn detects_missing_npc_metadata_fields() {
+        let def = SymbolDefinition {
+            location: sample_location(),
+            metadata: SymbolMetadata::Npc(NpcMetadata {
+                name: Some("Npc".into()),
+                description: Some("desc".into()),
+                location: None,
+                state: None,
+            }),
+        };
+        let issues = metadata_issues_for_definition("npc_a", &def);
+        assert_eq!(issues.len(), 2);
+        assert!(issues.iter().any(|msg| msg.contains("location")));
+        assert!(issues.iter().any(|msg| msg.contains("state")));
     }
 }
