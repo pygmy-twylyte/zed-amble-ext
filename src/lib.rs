@@ -21,7 +21,7 @@ impl zed::Extension for AmbleExtension {
 
         // The binary is in the extension's bin directory
         // For dev extensions, use the absolute path
-        let command = "/home/dave/Code/zed-amble-ext/bin/amble-lsp".to_string();
+        let command = "/home/dave/code/zed-amble-ext/bin/amble-lsp".to_string();
 
         Ok(zed::Command {
             command,

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Restore to last working source
 
-cd /home/dave/Code/zed-amble-ext
+cd /home/dave/code/zed-amble-ext
 
 echo "Restoring amble.rs to working state..."
 
