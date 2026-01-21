@@ -88,6 +88,66 @@
   ] @keyword
   "=" @operator)
 
+(game_def
+  [
+    "game"
+    "title"
+  ] @keyword)
+
+(game_title
+  "title" @keyword)
+
+(game_slug
+  "slug" @keyword
+  (string) @string)
+
+(game_author
+  "author" @keyword)
+
+(game_version
+  "version" @keyword)
+
+(game_blurb
+  "blurb" @keyword
+  (string) @string.special)
+
+(game_intro
+  "intro" @keyword)
+
+(game_player
+  "player" @keyword)
+
+(player_name
+  "name" @property)
+
+(player_desc
+  [
+    "desc"
+    "description"
+  ] @property)
+
+(player_max_hp
+  "max_hp" @property
+  max_hp: (pos_int) @number)
+
+(player_start
+  "start"
+  "room" @property
+  room_id: (_room_ref) @room_id)
+
+(game_scoring
+  "scoring" @keyword)
+
+(scoring_title
+  "report_title" @property
+  title: (entity_name) @string.special)
+
+(scoring_rank
+  "rank" @property
+  (score_threshold) @number
+  (entity_name) @string.special
+  (entity_desc) @string)
+
 ; Room specific
 (room_def
   "room" @keyword)
