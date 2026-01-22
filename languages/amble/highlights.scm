@@ -131,8 +131,10 @@
   max_hp: (pos_int) @number)
 
 (player_start
-  "start"
-  "room" @property
+  [
+    "start"
+    "room"
+  ] @property
   room_id: (_room_ref) @room_id)
 
 (game_scoring
