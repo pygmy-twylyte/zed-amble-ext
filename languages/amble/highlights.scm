@@ -28,8 +28,6 @@
 
 (custom_state) @variant
 
-(npc_state_builtin) @constant
-
 ; String-type nodes
 (entity_name) @string.special
 
@@ -58,8 +56,7 @@
 
 (dev_note) @emphasis
 
-(schedule_note) @comment.doc
-
+; (schedule_note) @comment.doc
 ; Global Markups
 [
   "if"
@@ -258,6 +255,16 @@
 
 (npc_state_set_custom
   "custom" @constant)
+
+(room_scenery_default
+  "scenery" @keyword
+  "default" @emphasis)
+
+(room_scenery_entry
+  "scenery" @keyword)
+
+(room_scenery_desc
+  "desc" @keyword)
 
 ; Trigger Highlights
 (trigger_def
