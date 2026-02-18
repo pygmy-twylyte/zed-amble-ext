@@ -16,7 +16,6 @@ use walkdir::{DirEntry, WalkDir};
 
 const IGNORED_DIRECTORIES: &[&str] = &[".git", "node_modules", "target", "dist", "build"];
 const HOVER_DESCRIPTION_MAX_CHARS: usize = 100;
-const SCHEDULE_WRAPPER_PREFIX: &str = "trigger \"__amble_schedule__\" when always ";
 
 /// Captures a `player_start` location plus source span for diagnostics.
 #[derive(Debug, Clone)]
@@ -24,23 +23,6 @@ pub(crate) struct PlayerStart {
     pub room_id: String,
     pub range: Range,
     pub uri: Url,
-}
-
-#[derive(Debug, Clone)]
-struct ScheduleFlagDefinition {
-    id: String,
-    range: Range,
-    defined_in: Option<String>,
-    sequence_limit: Option<i64>,
-}
-
-#[derive(Debug, Clone)]
-struct ScheduleSymbolReference {
-    kind: SymbolKind,
-    id: String,
-    raw_id: String,
-    range: Range,
-    rename_range: Option<Range>,
 }
 
 impl Backend {
@@ -473,107 +455,6 @@ impl Backend {
                     range,
                 });
             }
-        }
-
-        let (schedule_flag_definitions, schedule_symbol_references) = {
-            let mut parser = self.parser.lock();
-            (
-                collect_schedule_flag_definitions(
-                    &document,
-                    root_node,
-                    text,
-                    &mut parser,
-                    &self.queries.flag_definitions,
-                ),
-                collect_schedule_symbol_references(
-                    &document,
-                    root_node,
-                    text,
-                    &mut parser,
-                    &self.queries.room_references,
-                    &self.queries.item_references,
-                    &self.queries.npc_references,
-                    &self.queries.flag_references,
-                    &self.queries.set_references,
-                ),
-            )
-        };
-
-        for schedule_definition in schedule_flag_definitions {
-            let location = SymbolLocation {
-                uri: uri.clone(),
-                range: schedule_definition.range.clone(),
-                rename_range: None,
-            };
-
-            self.symbols.flags.insert_definition(
-                schedule_definition.id.clone(),
-                SymbolDefinition {
-                    location,
-                    metadata: SymbolMetadata::Flag(FlagMetadata {
-                        defined_in: schedule_definition.defined_in,
-                        sequence_limit: schedule_definition.sequence_limit,
-                    }),
-                },
-            );
-
-            occurrences.push(SymbolOccurrence {
-                kind: SymbolKind::Flag,
-                id: schedule_definition.id,
-                range: schedule_definition.range,
-            });
-        }
-
-        for schedule_reference in schedule_symbol_references {
-            let location = SymbolLocation {
-                uri: uri.clone(),
-                range: schedule_reference.range.clone(),
-                rename_range: schedule_reference.rename_range,
-            };
-
-            match schedule_reference.kind {
-                SymbolKind::Room => self.symbols.rooms.add_reference(
-                    schedule_reference.id.clone(),
-                    SymbolReference {
-                        location,
-                        raw_id: schedule_reference.raw_id,
-                    },
-                ),
-                SymbolKind::Item => self.symbols.items.add_reference(
-                    schedule_reference.id.clone(),
-                    SymbolReference {
-                        location,
-                        raw_id: schedule_reference.raw_id,
-                    },
-                ),
-                SymbolKind::Npc => self.symbols.npcs.add_reference(
-                    schedule_reference.id.clone(),
-                    SymbolReference {
-                        location,
-                        raw_id: schedule_reference.raw_id,
-                    },
-                ),
-                SymbolKind::Flag => self.symbols.flags.add_reference(
-                    schedule_reference.id.clone(),
-                    SymbolReference {
-                        location,
-                        raw_id: schedule_reference.raw_id,
-                    },
-                ),
-                SymbolKind::Set => self.symbols.sets.add_reference(
-                    schedule_reference.id.clone(),
-                    SymbolReference {
-                        location,
-                        raw_id: schedule_reference.raw_id,
-                    },
-                ),
-            }
-
-            occurrences.push(SymbolOccurrence {
-                kind: schedule_reference.kind,
-                id: schedule_reference.id,
-                range: schedule_reference.range,
-            });
         }
 
         let mut cursor = QueryCursor::new();
@@ -1844,244 +1725,6 @@ fn extract_flag_sequence_limit(action_node: &Node, text: &str) -> Option<i64> {
     None
 }
 
-fn collect_schedule_nodes<'tree>(root: Node<'tree>) -> Vec<(Node<'tree>, Node<'tree>)> {
-    let mut schedule_nodes = Vec::new();
-    let mut stack = vec![root];
-
-    while let Some(node) = stack.pop() {
-        if node.kind() == "action_schedule" {
-            if let Some(body_node) = node.child_by_field_name("body") {
-                schedule_nodes.push((node, body_node));
-            }
-        }
-
-        let mut cursor = node.walk();
-        for child in node.named_children(&mut cursor) {
-            stack.push(child);
-        }
-    }
-
-    schedule_nodes
-}
-
-fn remap_schedule_capture_range(
-    document: &Document,
-    body_node: &Node,
-    body_len: usize,
-    capture_node: &Node,
-) -> Option<Range> {
-    if capture_node.start_byte() < SCHEDULE_WRAPPER_PREFIX.len() {
-        return None;
-    }
-
-    let relative_start = capture_node.start_byte() - SCHEDULE_WRAPPER_PREFIX.len();
-    let relative_end = capture_node
-        .end_byte()
-        .saturating_sub(SCHEDULE_WRAPPER_PREFIX.len());
-    if relative_end > body_len || relative_end < relative_start {
-        return None;
-    }
-
-    let absolute_start = body_node.start_byte() + relative_start;
-    let absolute_end = body_node.start_byte() + relative_end;
-    Some(Range {
-        start: document.position_at(absolute_start),
-        end: document.position_at(absolute_end),
-    })
-}
-
-fn collect_schedule_flag_definitions(
-    document: &Document,
-    root: Node,
-    text: &str,
-    parser: &mut tree_sitter::Parser,
-    flag_definition_query: &tree_sitter::Query,
-) -> Vec<ScheduleFlagDefinition> {
-    let mut result = Vec::new();
-    for (schedule_node, body_node) in collect_schedule_nodes(root) {
-        let body_text = slice_text(text, &body_node);
-        if body_text.trim().is_empty() {
-            continue;
-        }
-
-        let wrapped = format!("{}{}", SCHEDULE_WRAPPER_PREFIX, body_text);
-        let Some(tree) = parser.parse(&wrapped, None) else {
-            continue;
-        };
-
-        let defined_in = find_trigger_name(schedule_node, text);
-        let mut cursor = QueryCursor::new();
-        let mut matches =
-            cursor.matches(flag_definition_query, tree.root_node(), wrapped.as_bytes());
-        while let Some(m) = matches.next() {
-            for capture in m.captures {
-                let node = capture.node;
-                let flag_name = slice_text(&wrapped, &node).trim();
-                if flag_name.is_empty() || node.start_byte() < SCHEDULE_WRAPPER_PREFIX.len() {
-                    continue;
-                }
-
-                let Some(range) =
-                    remap_schedule_capture_range(document, &body_node, body_text.len(), &node)
-                else {
-                    continue;
-                };
-
-                let sequence_limit = node
-                    .parent()
-                    .and_then(|action_node| extract_flag_sequence_limit(&action_node, &wrapped));
-
-                result.push(ScheduleFlagDefinition {
-                    id: flag_name.to_string(),
-                    range,
-                    defined_in: defined_in.clone(),
-                    sequence_limit,
-                });
-            }
-        }
-    }
-
-    result
-}
-
-fn collect_schedule_symbol_references(
-    document: &Document,
-    root: Node,
-    text: &str,
-    parser: &mut tree_sitter::Parser,
-    room_reference_query: &tree_sitter::Query,
-    item_reference_query: &tree_sitter::Query,
-    npc_reference_query: &tree_sitter::Query,
-    flag_reference_query: &tree_sitter::Query,
-    set_reference_query: &tree_sitter::Query,
-) -> Vec<ScheduleSymbolReference> {
-    let mut result = Vec::new();
-
-    for (_schedule_node, body_node) in collect_schedule_nodes(root) {
-        let body_text = slice_text(text, &body_node);
-        if body_text.trim().is_empty() {
-            continue;
-        }
-
-        let wrapped = format!("{}{}", SCHEDULE_WRAPPER_PREFIX, body_text);
-        let Some(tree) = parser.parse(&wrapped, None) else {
-            continue;
-        };
-        let schedule_root = tree.root_node();
-
-        collect_schedule_references_for_query(
-            &mut result,
-            document,
-            &body_node,
-            body_text.len(),
-            &wrapped,
-            schedule_root,
-            SymbolKind::Room,
-            room_reference_query,
-        );
-        collect_schedule_references_for_query(
-            &mut result,
-            document,
-            &body_node,
-            body_text.len(),
-            &wrapped,
-            schedule_root,
-            SymbolKind::Item,
-            item_reference_query,
-        );
-        collect_schedule_references_for_query(
-            &mut result,
-            document,
-            &body_node,
-            body_text.len(),
-            &wrapped,
-            schedule_root,
-            SymbolKind::Npc,
-            npc_reference_query,
-        );
-        collect_schedule_references_for_query(
-            &mut result,
-            document,
-            &body_node,
-            body_text.len(),
-            &wrapped,
-            schedule_root,
-            SymbolKind::Flag,
-            flag_reference_query,
-        );
-        collect_schedule_references_for_query(
-            &mut result,
-            document,
-            &body_node,
-            body_text.len(),
-            &wrapped,
-            schedule_root,
-            SymbolKind::Set,
-            set_reference_query,
-        );
-    }
-
-    result
-}
-
-fn collect_schedule_references_for_query(
-    output: &mut Vec<ScheduleSymbolReference>,
-    document: &Document,
-    body_node: &Node,
-    body_len: usize,
-    wrapped: &str,
-    root: Node,
-    kind: SymbolKind,
-    query: &tree_sitter::Query,
-) {
-    let mut cursor = QueryCursor::new();
-    let mut matches = cursor.matches(query, root, wrapped.as_bytes());
-    while let Some(m) = matches.next() {
-        for capture in m.captures {
-            let node = capture.node;
-            let raw_id = slice_text(wrapped, &node).trim();
-            if raw_id.is_empty() {
-                continue;
-            }
-
-            if let Some(parent) = node.parent() {
-                if is_definition_parent_for_kind(parent.kind(), kind) {
-                    continue;
-                }
-            }
-
-            let Some(range) = remap_schedule_capture_range(document, body_node, body_len, &node)
-            else {
-                continue;
-            };
-
-            let (id, rename_range) = if kind == SymbolKind::Flag {
-                normalize_flag_reference(raw_id, &range)
-            } else {
-                (raw_id.to_string(), None)
-            };
-
-            output.push(ScheduleSymbolReference {
-                kind,
-                id,
-                raw_id: raw_id.to_string(),
-                range,
-                rename_range,
-            });
-        }
-    }
-}
-
-fn is_definition_parent_for_kind(parent_kind: &str, kind: SymbolKind) -> bool {
-    match kind {
-        SymbolKind::Room => parent_kind == "room_def",
-        SymbolKind::Item => parent_kind == "item_def",
-        SymbolKind::Npc => parent_kind == "npc_def",
-        SymbolKind::Flag => parent_kind == "action_add_flag" || parent_kind == "action_add_seq",
-        SymbolKind::Set => parent_kind == "set_decl",
-    }
-}
-
 fn extract_set_rooms(set_node: &Node, text: &str) -> Vec<String> {
     if let Some(list_node) = named_child_by_kind(set_node, "set_list")
         .or_else(|| named_child_by_kind(set_node, "room_list"))
@@ -2321,7 +1964,7 @@ mod tests {
     use super::*;
     use crate::queries::Queries;
     use tower_lsp::lsp_types::Url;
-    use tree_sitter::{Parser, Query};
+    use tree_sitter::{Parser, QueryCursor};
 
     fn parse_source(source: &str) -> tree_sitter::Tree {
         let mut parser = Parser::new();
@@ -2363,13 +2006,6 @@ mod tests {
             line: line as u32,
             character,
         }
-    }
-
-    fn text_for_range(source: &str, range: &Range) -> String {
-        let document = Document::new(source.to_string());
-        let start = document.offset(range.start).expect("range start offset");
-        let end = document.offset(range.end).expect("range end offset");
-        source[start..end].to_string()
     }
 
     #[test]
@@ -2629,121 +2265,58 @@ mod tests {
     }
 
     #[test]
-    fn collects_flag_definitions_from_schedule_body() {
+    fn query_indexing_covers_schedule_bodies() {
         let source = r#"trigger "example" when always {
     do schedule in 3 note "later" {
-        do add flag some_flag_defined_here
-        do add seq flag some_sequence_flag limit 3
+        do add flag created_here
+        do spawn item widget into room lab
+        do advance flag quest#2
     }
 }
 "#;
 
         let tree = parse_source(source);
         let root = tree.root_node();
-        let document = Document::new(source.to_string());
+        let queries = Queries::new();
 
-        let mut parser = Parser::new();
-        parser
-            .set_language(&tree_sitter_amble::language())
-            .expect("load amble grammar");
-
-        let query = Query::new(
-            &tree_sitter_amble::language(),
-            r#"
-[
-  (action_add_flag
-    flag: (flag_name) @flag.definition)
-  (action_add_seq
-    flag_name: (flag_name) @flag.definition)
-]
-"#,
-        )
-        .expect("build flag definition query");
-
-        let definitions =
-            collect_schedule_flag_definitions(&document, root, source, &mut parser, &query);
-        assert_eq!(definitions.len(), 2);
-
-        let mut plain_flag_found = false;
-        let mut sequence_flag_found = false;
-        for definition in definitions {
-            let text = text_for_range(source, &definition.range);
-            if definition.id == "some_flag_defined_here" {
-                plain_flag_found = true;
-                assert_eq!(text, "some_flag_defined_here");
-                assert_eq!(definition.defined_in.as_deref(), Some("example"));
-                assert_eq!(definition.sequence_limit, None);
-            }
-
-            if definition.id == "some_sequence_flag" {
-                sequence_flag_found = true;
-                assert_eq!(text, "some_sequence_flag");
-                assert_eq!(definition.defined_in.as_deref(), Some("example"));
-                assert_eq!(definition.sequence_limit, Some(3));
+        let mut cursor = QueryCursor::new();
+        let mut flag_definitions = Vec::new();
+        let mut matches = cursor.matches(&queries.flag_definitions, root, source.as_bytes());
+        while let Some(m) = matches.next() {
+            for capture in m.captures {
+                flag_definitions.push(slice_text(source, &capture.node).trim().to_string());
             }
         }
+        assert!(flag_definitions.iter().any(|id| id == "created_here"));
 
-        assert!(plain_flag_found);
-        assert!(sequence_flag_found);
-    }
+        let mut cursor = QueryCursor::new();
+        let mut room_refs = Vec::new();
+        let mut matches = cursor.matches(&queries.room_references, root, source.as_bytes());
+        while let Some(m) = matches.next() {
+            for capture in m.captures {
+                room_refs.push(slice_text(source, &capture.node).trim().to_string());
+            }
+        }
+        assert!(room_refs.iter().any(|id| id == "lab"));
 
-    #[test]
-    fn collects_symbol_references_from_schedule_body() {
-        let source = r#"trigger "example" when always {
-    do schedule in 3 note "later" {
-        do spawn item widget into room lab
-        do spawn npc guide_bot into room lab
-        do advance flag quest#2
-        do add flag created_here
-    }
-}
-"#;
+        let mut cursor = QueryCursor::new();
+        let mut item_refs = Vec::new();
+        let mut matches = cursor.matches(&queries.item_references, root, source.as_bytes());
+        while let Some(m) = matches.next() {
+            for capture in m.captures {
+                item_refs.push(slice_text(source, &capture.node).trim().to_string());
+            }
+        }
+        assert!(item_refs.iter().any(|id| id == "widget"));
 
-        let tree = parse_source(source);
-        let root = tree.root_node();
-        let document = Document::new(source.to_string());
-
-        let mut parser = Parser::new();
-        parser
-            .set_language(&tree_sitter_amble::language())
-            .expect("load amble grammar");
-
-        let queries = Queries::new();
-        let references = collect_schedule_symbol_references(
-            &document,
-            root,
-            source,
-            &mut parser,
-            &queries.room_references,
-            &queries.item_references,
-            &queries.npc_references,
-            &queries.flag_references,
-            &queries.set_references,
-        );
-
-        assert!(references
-            .iter()
-            .any(|reference| reference.kind == SymbolKind::Item && reference.id == "widget"));
-        assert!(references
-            .iter()
-            .any(|reference| reference.kind == SymbolKind::Npc && reference.id == "guide_bot"));
-        assert!(references
-            .iter()
-            .any(|reference| reference.kind == SymbolKind::Room && reference.id == "lab"));
-        assert!(!references
-            .iter()
-            .any(|reference| reference.raw_id == "created_here"));
-
-        let quest_reference = references
-            .iter()
-            .find(|reference| reference.kind == SymbolKind::Flag && reference.raw_id == "quest#2")
-            .expect("missing schedule flag reference");
-        assert_eq!(quest_reference.id, "quest");
-        assert_eq!(text_for_range(source, &quest_reference.range), "quest#2");
-        let rename_range = quest_reference
-            .rename_range
-            .clone()
-            .expect("flag sequence reference should set rename range");
-        assert_eq!(text_for_range(source, &rename_range), "quest");
+        let mut cursor = QueryCursor::new();
+        let mut flag_refs = Vec::new();
+        let mut matches = cursor.matches(&queries.flag_references, root, source.as_bytes());
+        while let Some(m) = matches.next() {
+            for capture in m.captures {
+                flag_refs.push(slice_text(source, &capture.node).trim().to_string());
+            }
+        }
+        assert!(flag_refs.iter().any(|id| id == "quest#2"));
     }
 }

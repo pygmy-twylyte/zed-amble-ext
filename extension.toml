@@ -8,7 +8,7 @@ repository = "https://github.com/pygmy-twylyte/zed-amble-ext.git"
 
 [grammars.amble]
 repository = "https://github.com/pygmy-twylyte/tree-sitter-amble.git"
-rev = "6388e53c7807bad16c0764f23572aa93030ac6d6"
+rev = "f7591180875ad3896569deb063211cfd6af6a03b"
 
 [language_servers.amble-lsp]
 name = "Amble LSP"

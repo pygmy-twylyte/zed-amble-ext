@@ -284,6 +284,24 @@
 (priority_clause
   "priority" @embedded)
 
+(action_schedule
+  "schedule" @keyword)
+
+(schedule_timing_clause
+  [
+    "in"
+    "on"
+  ] @keyword)
+
+(schedule_if_clause
+  "if" @keyword)
+
+(schedule_on_false_clause
+  "onFalse" @keyword)
+
+(schedule_note_clause
+  "note" @keyword)
+
 ; Item Highlights
 (item_def
   "item" @keyword)
