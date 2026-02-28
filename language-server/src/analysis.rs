@@ -599,6 +599,23 @@ impl Backend {
         None
     }
 
+    pub(crate) fn get_symbol_occurrence_at_position(
+        &self,
+        uri: &Url,
+        position: Position,
+    ) -> Option<SymbolOccurrence> {
+        let uri_str = uri.to_string();
+        let occurrences = self.document_symbols.get(&uri_str)?;
+
+        for occurrence in occurrences.iter() {
+            if range_contains(&occurrence.range, position) {
+                return Some(occurrence.clone());
+            }
+        }
+
+        None
+    }
+
     pub(crate) fn get_completion_context(
         &self,
         uri: &Url,

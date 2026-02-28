@@ -6,8 +6,8 @@ use crate::text::DocumentStore;
 use dashmap::DashMap;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::time::SystemTime;
 use std::sync::Arc;
+use std::time::SystemTime;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer};
@@ -71,11 +71,36 @@ impl Backend {
 
     fn collect_document_symbols(&self, uri: &Url) -> Vec<DocumentSymbol> {
         let mut symbols = Vec::new();
-        self.push_document_symbols_for_index(uri, SymbolKind::Room, &self.symbols.rooms, &mut symbols);
-        self.push_document_symbols_for_index(uri, SymbolKind::Item, &self.symbols.items, &mut symbols);
-        self.push_document_symbols_for_index(uri, SymbolKind::Npc, &self.symbols.npcs, &mut symbols);
-        self.push_document_symbols_for_index(uri, SymbolKind::Flag, &self.symbols.flags, &mut symbols);
-        self.push_document_symbols_for_index(uri, SymbolKind::Set, &self.symbols.sets, &mut symbols);
+        self.push_document_symbols_for_index(
+            uri,
+            SymbolKind::Room,
+            &self.symbols.rooms,
+            &mut symbols,
+        );
+        self.push_document_symbols_for_index(
+            uri,
+            SymbolKind::Item,
+            &self.symbols.items,
+            &mut symbols,
+        );
+        self.push_document_symbols_for_index(
+            uri,
+            SymbolKind::Npc,
+            &self.symbols.npcs,
+            &mut symbols,
+        );
+        self.push_document_symbols_for_index(
+            uri,
+            SymbolKind::Flag,
+            &self.symbols.flags,
+            &mut symbols,
+        );
+        self.push_document_symbols_for_index(
+            uri,
+            SymbolKind::Set,
+            &self.symbols.sets,
+            &mut symbols,
+        );
         symbols
     }
 
@@ -97,11 +122,36 @@ impl Backend {
 
     fn collect_workspace_symbols(&self, query: &str) -> Vec<SymbolInformation> {
         let mut symbols = Vec::new();
-        self.push_workspace_symbols_for_index(query, SymbolKind::Room, &self.symbols.rooms, &mut symbols);
-        self.push_workspace_symbols_for_index(query, SymbolKind::Item, &self.symbols.items, &mut symbols);
-        self.push_workspace_symbols_for_index(query, SymbolKind::Npc, &self.symbols.npcs, &mut symbols);
-        self.push_workspace_symbols_for_index(query, SymbolKind::Flag, &self.symbols.flags, &mut symbols);
-        self.push_workspace_symbols_for_index(query, SymbolKind::Set, &self.symbols.sets, &mut symbols);
+        self.push_workspace_symbols_for_index(
+            query,
+            SymbolKind::Room,
+            &self.symbols.rooms,
+            &mut symbols,
+        );
+        self.push_workspace_symbols_for_index(
+            query,
+            SymbolKind::Item,
+            &self.symbols.items,
+            &mut symbols,
+        );
+        self.push_workspace_symbols_for_index(
+            query,
+            SymbolKind::Npc,
+            &self.symbols.npcs,
+            &mut symbols,
+        );
+        self.push_workspace_symbols_for_index(
+            query,
+            SymbolKind::Flag,
+            &self.symbols.flags,
+            &mut symbols,
+        );
+        self.push_workspace_symbols_for_index(
+            query,
+            SymbolKind::Set,
+            &self.symbols.sets,
+            &mut symbols,
+        );
         symbols
     }
 
@@ -147,6 +197,35 @@ impl Backend {
         }
 
         edits
+    }
+
+    fn rename_range_for_occurrence(
+        &self,
+        uri: &Url,
+        position: Position,
+        kind: SymbolKind,
+        id: &str,
+        fallback: Range,
+    ) -> Range {
+        let index = self.symbols.index(kind);
+
+        if let Some(def) = index.definition(id) {
+            if def.location.uri == *uri && range_contains(&def.location.range, position) {
+                return def.location.rename_range();
+            }
+        }
+
+        if let Some(refs) = index.references(id) {
+            for reference in refs.iter() {
+                if reference.location.uri == *uri
+                    && range_contains(&reference.location.range, position)
+                {
+                    return reference.location.rename_range();
+                }
+            }
+        }
+
+        fallback
     }
 
     fn definition_display_path(&self, uri: &Url) -> Option<String> {
@@ -227,10 +306,7 @@ fn workspace_symbol_from_definition(
 
 fn definition_detail(definition: &SymbolDefinition) -> Option<String> {
     match &definition.metadata {
-        SymbolMetadata::Room(meta) => meta
-            .name
-            .clone()
-            .or_else(|| meta.description.clone()),
+        SymbolMetadata::Room(meta) => meta.name.clone().or_else(|| meta.description.clone()),
         SymbolMetadata::Item(meta) => meta
             .name
             .clone()
@@ -315,7 +391,10 @@ impl LanguageServer for Backend {
                 completion_provider: Some(CompletionOptions::default()),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 document_formatting_provider: Some(OneOf::Left(true)),
-                rename_provider: Some(OneOf::Left(true)),
+                rename_provider: Some(OneOf::Right(RenameOptions {
+                    prepare_provider: Some(true),
+                    work_done_progress_options: WorkDoneProgressOptions::default(),
+                })),
                 ..Default::default()
             },
         })
@@ -454,6 +533,30 @@ impl LanguageServer for Backend {
         Ok(None)
     }
 
+    async fn prepare_rename(
+        &self,
+        params: TextDocumentPositionParams,
+    ) -> Result<Option<PrepareRenameResponse>> {
+        let uri = params.text_document.uri;
+        let position = params.position;
+
+        if let Some(occurrence) = self.get_symbol_occurrence_at_position(&uri, position) {
+            let range = self.rename_range_for_occurrence(
+                &uri,
+                position,
+                occurrence.kind,
+                &occurrence.id,
+                occurrence.range,
+            );
+            return Ok(Some(PrepareRenameResponse::RangeWithPlaceholder {
+                range,
+                placeholder: occurrence.id,
+            }));
+        }
+
+        Ok(None)
+    }
+
     async fn goto_definition(
         &self,
         params: GotoDefinitionParams,
@@ -517,11 +620,7 @@ impl LanguageServer for Backend {
             for entry in index.definitions_iter() {
                 let id = entry.key().clone();
                 let definition = entry.value().clone();
-                items.push(self.completion_item_from_definition(
-                    symbol_type,
-                    &id,
-                    &definition,
-                ));
+                items.push(self.completion_item_from_definition(symbol_type, &id, &definition));
             }
 
             if !items.is_empty() {
@@ -531,4 +630,17 @@ impl LanguageServer for Backend {
 
         Ok(None)
     }
+}
+
+fn range_contains(range: &Range, position: Position) -> bool {
+    if position.line < range.start.line || position.line > range.end.line {
+        return false;
+    }
+    if position.line == range.start.line && position.character < range.start.character {
+        return false;
+    }
+    if position.line == range.end.line && position.character > range.end.character {
+        return false;
+    }
+    true
 }
