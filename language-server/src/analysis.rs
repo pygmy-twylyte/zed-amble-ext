@@ -99,11 +99,6 @@ impl Backend {
                 continue;
             }
 
-            let modified = directory_modified(&dir);
-            if !self.should_scan_directory(&dir, modified) {
-                continue;
-            }
-
             for entry in WalkDir::new(&dir)
                 .follow_links(false)
                 .into_iter()
@@ -119,23 +114,24 @@ impl Backend {
                 }
                 if let Ok(uri) = Url::from_file_path(&path) {
                     let uri_str = uri.to_string();
-                    if self.documents.contains_key(&uri_str) {
+                    if self.open_documents.contains(&uri_str) {
                         continue;
                     }
+
+                    let modified = file_modified(&path);
+                    if let Some(previous) = self.indexed_documents.get(&uri_str) {
+                        if !needs_rescan(previous.value().clone(), modified) {
+                            continue;
+                        }
+                    }
+
                     if let Ok(content) = std::fs::read_to_string(&path) {
                         self.analyze_document(&uri, &content);
+                        self.indexed_documents.insert(uri_str, modified);
+                        continue;
                     }
                 }
             }
-
-            self.scanned_directories.insert(dir.clone(), modified);
-        }
-    }
-
-    fn should_scan_directory(&self, dir: &Path, modified: Option<SystemTime>) -> bool {
-        match self.scanned_directories.get(dir) {
-            Some(previous) => needs_rescan(previous.value().clone(), modified),
-            None => true,
         }
     }
 
@@ -775,6 +771,18 @@ impl Backend {
             .await;
     }
 
+    pub(crate) async fn check_workspace_diagnostics(&self) {
+        let uris: Vec<Url> = self
+            .documents
+            .iter()
+            .filter_map(|entry| Url::parse(entry.key()).ok())
+            .collect();
+
+        for uri in uris {
+            self.check_diagnostics(&uri).await;
+        }
+    }
+
     /// Flags duplicate definitions, downgrading flags to hints because multiple triggers
     /// may intentionally set the same game state.
     fn append_duplicate_definition_diagnostics(
@@ -1131,7 +1139,7 @@ fn should_visit_entry(entry: &DirEntry) -> bool {
     true
 }
 
-fn directory_modified(path: &Path) -> Option<SystemTime> {
+fn file_modified(path: &Path) -> Option<SystemTime> {
     std::fs::metadata(path).ok()?.modified().ok()
 }
 

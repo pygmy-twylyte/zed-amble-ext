@@ -3,11 +3,10 @@ use crate::formatter;
 use crate::queries::Queries;
 use crate::symbols::{SymbolDefinition, SymbolIndex, SymbolKind, SymbolMetadata, SymbolStore};
 use crate::text::DocumentStore;
-use dashmap::DashMap;
+use dashmap::{DashMap, DashSet};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::SystemTime;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer};
@@ -23,7 +22,10 @@ pub struct Backend {
     pub(crate) workspace_roots: Arc<parking_lot::RwLock<Vec<PathBuf>>>,
     pub(crate) parser: Arc<parking_lot::Mutex<Parser>>,
     pub(crate) queries: Arc<Queries>,
-    pub(crate) scanned_directories: Arc<DashMap<PathBuf, Option<SystemTime>>>,
+    /// Files currently open in the editor. We never overwrite these from on-disk scans.
+    pub(crate) open_documents: Arc<DashSet<String>>,
+    /// Last observed on-disk modified time per indexed file URI.
+    pub(crate) indexed_documents: Arc<DashMap<String, Option<std::time::SystemTime>>>,
     /// Cached `player_start` nodes per document; used for workspace-level diagnostics.
     pub(crate) player_starts: Arc<DashMap<String, Vec<PlayerStart>>>,
 }
@@ -43,7 +45,8 @@ impl Backend {
             workspace_roots: Arc::new(parking_lot::RwLock::new(Vec::new())),
             parser: Arc::new(parking_lot::Mutex::new(parser)),
             queries: Arc::new(Queries::new()),
-            scanned_directories: Arc::new(DashMap::new()),
+            open_documents: Arc::new(DashSet::new()),
+            indexed_documents: Arc::new(DashMap::new()),
             player_starts: Arc::new(DashMap::new()),
         }
     }
@@ -412,11 +415,18 @@ impl LanguageServer for Backend {
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let uri = params.text_document.uri;
+        let uri_str = uri.to_string();
         let text = params.text_document.text;
+
+        self.open_documents.insert(uri_str.clone());
+        if let Ok(path) = uri.to_file_path() {
+            self.indexed_documents
+                .insert(uri_str.clone(), file_modified(&path));
+        }
 
         self.analyze_document(&uri, &text);
         self.scan_directory(&uri).await;
-        self.check_diagnostics(&uri).await;
+        self.check_workspace_diagnostics().await;
 
         self.client
             .log_message(MessageType::INFO, format!("Opened document: {}", uri))
@@ -425,18 +435,53 @@ impl LanguageServer for Backend {
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let uri = params.text_document.uri;
+        let uri_str = uri.to_string();
 
         if let Some(change) = params.content_changes.into_iter().next() {
+            self.open_documents.insert(uri_str);
             self.analyze_document(&uri, &change.text);
-            self.check_diagnostics(&uri).await;
+            self.check_workspace_diagnostics().await;
         }
     }
 
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
         let uri = params.text_document.uri;
+        let uri_str = uri.to_string();
+
+        if let Ok(path) = uri.to_file_path() {
+            self.indexed_documents.insert(uri_str, file_modified(&path));
+        }
 
         self.scan_directory(&uri).await;
-        self.check_diagnostics(&uri).await;
+        self.check_workspace_diagnostics().await;
+    }
+
+    async fn did_close(&self, params: DidCloseTextDocumentParams) {
+        let uri = params.text_document.uri;
+        let uri_str = uri.to_string();
+        self.open_documents.remove(&uri_str);
+
+        if let Ok(path) = uri.to_file_path() {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                self.analyze_document(&uri, &content);
+                self.indexed_documents
+                    .insert(uri_str.clone(), file_modified(&path));
+            } else {
+                self.symbols.clear_document(&uri);
+                self.documents.remove(&uri_str);
+                self.document_symbols.remove(&uri_str);
+                self.player_starts.remove(&uri_str);
+                self.indexed_documents.remove(&uri_str);
+            }
+        } else {
+            self.symbols.clear_document(&uri);
+            self.documents.remove(&uri_str);
+            self.document_symbols.remove(&uri_str);
+            self.player_starts.remove(&uri_str);
+            self.indexed_documents.remove(&uri_str);
+        }
+
+        self.check_workspace_diagnostics().await;
     }
 
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
@@ -643,4 +688,8 @@ fn range_contains(range: &Range, position: Position) -> bool {
         return false;
     }
     true
+}
+
+fn file_modified(path: &std::path::Path) -> Option<std::time::SystemTime> {
+    std::fs::metadata(path).ok()?.modified().ok()
 }
