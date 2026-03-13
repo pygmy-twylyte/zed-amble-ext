@@ -25,7 +25,7 @@ npc b_a_receptionist {
 npc black_knight {
     name "The Black Knight"
     desc "A dark, glowering presence in a black suit of armor with a longsword."
-    location room sublevel-1-entrance
+    location room sublevel-entrance
     state normal
     dialogue happy {
         "None shall pa-- oh, no, you can go."

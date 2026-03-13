@@ -299,7 +299,7 @@ item fallen_tree {
     name "Fallen Tree"
     desc "A large, fallen oak tree obstructing the path further up the steps. Well, maybe not so much \"fallen\" as ripped from the mountainside and tossed down by whatever left the deep claw marks in the trunk."
     portable false
-    location room two-sheds-landing
+    location room jacksons_landing
     requires ignite to burn
     requires cutWood to cut
 }
@@ -560,7 +560,7 @@ item jackson_mailbox {
     name "Mailbox"
     desc "A typical white mailbox with a red flag on a post, situated at the top of a path into the woods to the east."
     portable false
-    location room two-sheds-landing
+    location room jacksons_landing
     container state closed
 }
 
@@ -749,7 +749,8 @@ item test_edible {
     }
 }
 
-trigger "Ate Cupcake" when eat item test_edible {
+trigger "Ate Cupcake"
+when eat item test_edible {
     do show "Yummy!"
     do award points 2
 }

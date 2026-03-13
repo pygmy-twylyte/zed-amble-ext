@@ -560,7 +560,7 @@ when take item invitation {
 
 # ..................................................................................................................SUBLEVEL-1-ENTRANCE
 trigger "Sublevel-1-Entrance: Arrived" only once
-when enter room sublevel-1-entrance {
+when enter room sublevel-entrance {
     do add flag entered-sublevel-1
 }
 
@@ -612,7 +612,7 @@ when give item keen_longsword to npc black_knight
 {
     do restrict item keen_longsword
     do add flag appeased-black-knight
-    do set barred message from sublevel-1-entrance to room-aa-3b "As you near the door, you are overwhelmed by a sense of spinning through an unending series of fictional realities, compelling you to step away."
+    do set barred message from sublevel-entrance to room-aa-3b "As you near the door, you are overwhelmed by a sense of spinning through an unending series of fictional realities, compelling you to step away."
     do award points 5
     do set npc state black_knight happy
     do npc says black_knight "hank you, good Sir! For your kind deed, I swear on my sword that I shall not cut you to bits with it. And you may pass wherever you like."
@@ -836,7 +836,7 @@ when take item towel {
 let set woods = (
     high-ridge,
     parish-landing,
-    two-sheds-landing,
+    jacksons_landing,
     two-sheds,
     guard-post,
 )
@@ -865,7 +865,7 @@ when always {
 
 let set near_aa3b = (
     lift-sublevel-1,
-    sublevel-1-entrance,
+    sublevel-entrance,
     corridor-north,
     corridor-south,
     observation-room,

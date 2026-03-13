@@ -21,7 +21,7 @@ room parish-landing {
     desc "A small plateau carved into the hillside, marked by an old wooden sign that reads: 'Pilgrims Welcome – Pancakes Served Daily (Terms and Conditions Apply)'. A faded poster nailed beside it shows a smiling Saint Alfonzo wielding a spatula like a holy relic.\n\nFrom here, the steps curve gently upward to another distant landing. A modest trail leads west toward a nearby parish."
     exit down -> high-ridge
     exit west -> st-alfonzo-parish
-    exit up -> two-sheds-landing
+    exit up -> jacksons_landing
 }
 
 room st-alfonzo-parish {
@@ -34,20 +34,20 @@ room st-alfonzo-parish {
     exit east -> parish-landing
 }
 
-room two-sheds-landing {
+room jacksons_landing {
     name "Jackson's Landing"
     desc "A quiet landing tucked along the slope, with a rusted mailbox labeled 'A. Jackson' standing to one side. A trail sign points east toward something optimistically named \"Two Sheds\". Underneath, someone has scratched in: \"Technically One.\""
-    overlay if (item present fallen_tree) {
+    overlay if ( item present fallen_tree ) {
         text "A huge tangle of limbs and branches from a fallen tree block the path continuing upward."
     }
-    overlay if (flag set chopped-fallen-tree) {
+    overlay if ( flag set chopped-fallen-tree ) {
         text "Cut branches of a fallen tree are piled to the side of the path upward."
     }
-    overlay if (flag set burned-fallen-tree) {
+    overlay if ( flag set burned-fallen-tree ) {
         text "Charred twigs and smoldering ash are all that remain of the fallen tree."
     }
     exit up -> guard-post {
-        required_flags(cleared-fallen-tree),
+        required_flags( cleared-fallen-tree ),
         barred "You can't get around the fallen tree. You'll need to find a way to clear it from the path."
     }
     exit down -> parish-landing
@@ -57,23 +57,23 @@ room two-sheds-landing {
 room two-sheds {
     name "Two Sheds"
     desc "A modest wooden shed stands alone in the clearing. It appears freshly painted and surprisingly well cared for. A plaque on the door reads:\n\n        'ARTHUR \"TWO SHEDS\" JACKSON\n         Philosopher, Composer, Owner of One Shed'\n\nA second, smaller foundation lies nearby, overgrown with weeds. A broken signpost beside it reads: 'Future Site of Shed #2 – Delayed Indefinitely.' The forest is dark and dense, and the slope falls off sharply beyond the shed."
-    overlay if (item present arson_aid, item present lumberjack_axe) {
+    overlay if ( item present arson_aid, item present lumberjack_axe ) {
         text "An abandoned axe and... something like a sawed-off flamethrower are lying partly hidden by the overgrowth."
     }
-    overlay if (item present arson_aid, item absent lumberjack_axe) {
+    overlay if ( item present arson_aid, item absent lumberjack_axe ) {
         text "Something that looks like a sawed-off flamethrower remains partly concealed in the tall grass."
     }
-    overlay if (item absent arson_aid, item present lumberjack_axe) {
+    overlay if ( item absent arson_aid, item present lumberjack_axe ) {
         text "A disused but serviceable axe remains partly concealed in the tall grass."
     }
-    exit west -> two-sheds-landing
+    exit west -> jacksons_landing
 }
 
 room guard-post {
     name "Abandoned Guard Post"
     desc "A small stone guard post clings to the side of the trail, complete with a creaky wooden chair and a megaphone labeled 'USE ONLY IF VERY SURE'. A faded official-looking placard reads:\n\n'NOTICE: Passage beyond this point may lead to anachronism.'\n\nIt seems no one’s been stationed here in quite some time. The trail continues upward, leading to what appears to be an ancient road—and a distinctly non-ancient office park."
     exit up -> inca-road
-    exit down -> two-sheds-landing
+    exit down -> jacksons_landing
 }
 
 room inca-road {
@@ -96,11 +96,11 @@ room front-entrance {
         happy  "Dibbler beams and offers a celebratory sausage-inna-bun."
         bored  "Dibbler sighs about the slow foot traffic."
     }
-    overlay if (npc absent cmot_dibbler) {
+    overlay if ( npc absent cmot_dibbler ) {
         text "The doorway is mercifully free of purveyors of questionable sausages, for now."
     }
     exit north -> main-lobby {
-        required_flags(got-towel),
+        required_flags( got-towel ),
         barred "Not so fast. The security bot is absolutely insistent that you have a towel before you go inside."
     }
     exit west -> snowfield
@@ -149,7 +149,7 @@ room east-of-building {
         happy  "Dibbler hums a sales jingle, certain new patrons will arrive."
         bored  "Dibbler kicks at the gravel, lamenting the lack of customers."
     }
-    overlay if (player has item dental_floss) {
+    overlay if ( player has item dental_floss ) {
         text "The weird bush looks oddly bare now, stripped of its floss-like strands."
     }
     exit northwest -> loading-dock
@@ -181,16 +181,16 @@ room b-a-office {
         set r#"The "Planning to Plan" whiteboard has parted to reveal a heavy, vault-like door set into the west wall."#
         unset r#"A floor-to-ceiling whiteboard on the west wall boasts an impressive flowchart titled "Planning to Plan"."#
     }
-    overlay if (flag unset got-visitor-pass, player missing item invitation) {
+    overlay if ( flag unset got-visitor-pass, player missing item invitation ) {
         text "A robotic receptionist sits behind a tidy desk adorned with figurines of Portal turrets and companion cubes. She (it?) pointedly ignores you."
     }
-    overlay if (flag unset got-visitor-pass, player has item invitation) {
+    overlay if ( flag unset got-visitor-pass, player has item invitation ) {
         text "The receptionist, sensing something, tries furtively to see what you have in your pack."
     }
-    overlay if (flag set got-visitor-pass) {
+    overlay if ( flag set got-visitor-pass ) {
         text "The receptionist looks up from rearranging her turrets, giving you a subtle wink and a grin."
     }
-    overlay if (flag set lost-and-found-opened) {
+    overlay if ( flag set lost-and-found-opened ) {
         text "The Lost & Found box sits with its lid hanging open, contents plainly visible."
     }
     exit east -> main-lobby
@@ -227,7 +227,7 @@ room lift-main {
     }
     exit main -> lift-bank-main
     exit aa-3 -> lift-sublevel-1 {
-        required_items(visitor_pass, elevator_keycard),
+        required_items( visitor_pass, elevator_keycard ),
         barred "That button is disabled. Visitor pass and elevator keycard are required for access to the sublevel."
     }
 }
@@ -239,7 +239,7 @@ room lounge {
         present "An ornate, brick red rug lies in the center of the room and somehow -- really ties the room together."
         absent "The trap door opened in the floor reveals a ladder down to a hidden room below."
     }
-    overlay if (flag set lab-fire-raging) {
+    overlay if ( flag set lab-fire-raging ) {
         text "Occasional wisps of black smoke rise from the portal room below."
     }
     overlay if flag coffee-brewed {
@@ -261,14 +261,14 @@ room lounge {
 room portal-room {
     name "Portal Room"
     desc "A bare white room with a white tile floor. A ladder leads back up through the trap door in the ceiling. Three of the four walls are used as whiteboards, littered with obscure diagrams and equations. In the center, a black and white Portal gun is affixed to a pedestal and aimed squarely at the fourth wall."
-    overlay if (flag set portal-gun-powered) {
+    overlay if ( flag set portal-gun-powered ) {
         text "The power indicator on the Portal gun now glows a steady green."
     }
     overlay if flag portal-opened {
         set "There is a sparkling blue portal in the fourth wall, with a view through to a laboratory space beyond."
         unset "A bullseye adorns the fourth, otherwise blank wall. A photo of a watch-sized computer attached to a potato battery is taped in the center, for some reason."
     }
-    overlay if (flag set portal-opened, flag set lab-fire-raging) {
+    overlay if ( flag set portal-opened, flag set lab-fire-raging ) {
         text "Black smoke and the occasional lick of flame pour through the portal from the laboratory inferno on the other side."
     }
 }
@@ -276,19 +276,19 @@ room portal-room {
 room aperture-lab {
     name "Aperture Science Laboratory"
     desc "The unnaturally white—walls, floor, ceiling, even the air here feels clinical and overexposed. Everything hums at a frequency designed to encourage strict compliance. A single console blinks on a table beside a highly over-engineered printer labeled \"Aperture Science Hospitality Generator.\""
-    overlay if (flag set burned-invitation, flag unset invitation-sans-ignition) {
+    overlay if ( flag set burned-invitation, flag unset invitation-sans-ignition ) {
         text "A smoky haze and the lingering smell of burned paper permeate the room."
     }
-    overlay if (flag set lab-fire-raging) {
+    overlay if ( flag set lab-fire-raging ) {
         text "Flames leap from foamy surfaces around you, while the sprinklers try in vain to douse the oily residue!"
     }
-    overlay if (flag complete foam-fire-in-lab, flag unset invitation-sans-ignition) {
+    overlay if ( flag complete foam-fire-in-lab, flag unset invitation-sans-ignition ) {
         text "Charred, soggy and warped lab and office equipment are everywhere. Astoundingly, the printer still seems to be working -- and with a job pending."
     }
-    overlay if (flag set invitation-sans-ignition) {
+    overlay if ( flag set invitation-sans-ignition ) {
         text "The printer is in its 3-day cooldown period, and there are no jobs pending."
     }
-    overlay if (item present invitation) {
+    overlay if ( item present invitation ) {
         text "A glowing, steaming, sizzling invitation engraved on an asbestos sheet sits on the floor in front of the printer."
     }
     exit portal -> portal-room
@@ -305,7 +305,7 @@ room restaurant {
     exit west -> main-lobby
     exit east -> patio
     exit south -> vip-bathroom {
-        required_items(visitor_pass),
+        required_items( visitor_pass ),
         barred "The door apologizes profusely for refusing to open, explaining that it's forced by programming not to let you in without a visitor's pass."
     }
 }
@@ -332,32 +332,32 @@ room lift-sublevel-1 {
     name "Elevator (Sublevel AA-3)"
     desc "The elevator sits open at the end of the corridor, but its appearance is… altered. What was once a sleek, polished carriage now seems borrowed from another world entirely. Gilded scrollwork curls along the walls where none existed before, and the ceiling flickers between brass panels and a starlit void. It hums with potential—and something less easily named."
     exit main -> lift-main
-    exit south -> sublevel-1-entrance
+    exit south -> sublevel-entrance
 }
 
-room sublevel-1-entrance {
+room sublevel-entrance {
     name "Sublevel AA-3 Entrance"
     desc "A small landing area covered in dust. Buckets, tools, and debris are strewn about the floor. The door to the west is labeled with a sign:\n\n                        🚧 ROOM AA-3B 🚧\n                 FICTIONAL UNIVERSE CONTAINMENT"
-    overlay if (npc in state black_knight normal) {
+    overlay if ( npc in state black_knight normal ) {
         text "The Black Knight stands in your path, staring you down, leaning on his battered longsword."
     }
-    overlay if (npc in state black_knight mad) {
+    overlay if ( npc in state black_knight mad ) {
         text "Agitated, the Black Knight sidesteps around the room, occasionally lunging at you to grab at his sword or kick you in the shin."
     }
-    overlay if (npc in state black_knight happy) {
+    overlay if ( npc in state black_knight happy ) {
         text "The Black Knight stands in a corner, helmet off, gleefully plucking hairs from his beard and splitting them with his sword."
     }
     exit north -> lift-sublevel-1
     exit west -> room-aa-3b {
-        required_flags(appeased-black-knight, touched-monolith),
+        required_flags( appeased-black-knight, touched-monolith ),
         barred "The Black Knight stands in your way."
     }
     exit east -> security-station {
-        required_flags(appeased-black-knight),
+        required_flags( appeased-black-knight ),
         barred "The Black Knight stands in your way."
     }
     exit south -> corridor-north {
-        required_flags(appeased-black-knight),
+        required_flags( appeased-black-knight ),
         barred "The Black Knight stands in your way."
     }
 }
@@ -371,13 +371,13 @@ room supply-closet {
 room room-aa-3b {
     name "Room AA-3B"
     desc "The door opens into a swirling mass of static and fractured reality. Flickering projections of impossible geometries ripple through the darkness. Objects seem to vanish halfway through existing. A guttural voice whispers paradoxes from the walls themselves. Anyone with a sense of self-preservation should probably leave immediately.\n\nA small sign by the entrance reads: 'Amble Adventures assumes no responsibility for ontological damage incurred within.'"
-    exit east -> sublevel-1-entrance
+    exit east -> sublevel-entrance
 }
 
 room corridor-north {
     name "Research Corridor (North)"
     desc "A dimly lit concrete hallway stretches out, lined with emergency lights that flicker like they're deciding whether to stay on. Faint scratching sounds echo through the walls at irregular intervals.\n\nGraffiti on one wall reads: 'THEY NEVER LEFT AA-3B.' A maintenance hatch rattles occasionally, as if something on the other side is trying to remember how to use a doorknob."
-    exit north -> sublevel-1-entrance
+    exit north -> sublevel-entrance
     exit west -> observation-room
     exit east -> med-bay
     exit south -> corridor-south
@@ -411,7 +411,7 @@ room security-station {
         present "A heavy steel evidence locker is embedded in the wall. It's covered in dents, scratches, and scorch marks -- evidence of previous failed attempts to open it."
         absent "The heavy door of the evidence locker, having surrendered at last, hangs loosely from one of its hinges."
     }
-    exit west -> sublevel-1-entrance
+    exit west -> sublevel-entrance
 }
 
 room med-bay {
@@ -435,16 +435,16 @@ room corridor-south {
 room monolith-room {
     name "Monolith Room"
     desc "The room is stark, dim, and cavernous. A series of industrial floodlights cast long, angled shadows across the centerpiece: a tall, perfectly black monolith that defies reflection. It absorbs light, sound, and—if you stare too long—possibly thought."
-    overlay if (flag unset talked-to-hal) {
+    overlay if ( flag unset talked-to-hal ) {
         text "A HAL-9000 camera and terminal embedded in the far wall looms dark and silent, but somehow still seems to be observing your actions."
     }
-    overlay if (flag set hal-reboot#1) {
+    overlay if ( flag set hal-reboot#1 ) {
         text "Several lights blink slowly on a panel near HAL-9000's camera, whose red light still glows faintly. A few cryptic instructions flicker across the monitor."
     }
-    overlay if (flag set hal-reboot#2) {
+    overlay if ( flag set hal-reboot#2 ) {
         text "HAL-9000's lens light glows bright red with a yellow center. Lights on several panels now flash in sequence; a boot sequence scrolls rapidly up the display."
     }
-    overlay if (flag complete hal-reboot) {
+    overlay if ( flag complete hal-reboot ) {
         text "The light in HAL-9000's lens glows an intense red and seems to stare through you and into the monolith. Various status notifications cycle on the nearby monitor."
     }
     exit east -> corridor-south
