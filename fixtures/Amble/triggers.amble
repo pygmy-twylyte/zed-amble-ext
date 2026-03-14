@@ -105,7 +105,7 @@ when enter room guard-post {
 # ..................................................................................................................EAST-OF-BUILDING
 
 trigger "East-of-Building: Pluck Dental Floss" only once
-when take item dental_floss {
+when take dental_floss {
     do show "You pluck a strand of floss from the bush. It comes away easily — disturbingly so. Minty. Strong. Too strong. You’re no botanist, but you’re pretty sure this shouldn’t be growing out of a shrubbery."
     do award points 5
     do set item description weird_bush "A squat, leafy bush now stripped of its floss-like strands, bare branches jutting out awkwardly. A small sign next to it reads 'Pride of Montana'."
@@ -156,7 +156,7 @@ when act burn on item security_crate {
 }
 
 trigger "Loading-Dock: Got Crowbar" only once
-when take item crowbar {
+when take crowbar {
     do show "You feel like Gordon Freeman now, and wonder if maybe Barney's on security here?"
     do add flag got-crowbar
     do award points 3
@@ -245,7 +245,7 @@ when use item fishing_line on item hal_module_2_crevice interaction handle
 }
 
 trigger "Main-Lobby: Can't Reach HAL Module in Crevice"
-when take item hal_module_2_crevice
+when take hal_module_2_crevice
 {
     if has flag module-2-puzzle#1 {
         do show "The HAL module has fallen deep into a narrow crevice between the vending machine and the floor. You try to reach it with your hand, but the gap is too narrow. Your fingers can just barely brush against the module, pushing it slightly further away. You're going to need some kind of fishing tool to retrieve it."
@@ -382,7 +382,7 @@ when enter room b-a-office {
 # ..................................................................................................................POETRY-PANIC
 
 trigger "Poetry-Panic: Acquired Elevator Keycard" only once
-when take item elevator_keycard {
+when take elevator_keycard {
     do set npc state b_a_receptionist bored
     do add flag got-elevator-keycard
 }
@@ -390,7 +390,7 @@ when take item elevator_keycard {
 # ..................................................................................................................LOUNGE
 
 trigger "Lounge: Rug Taken / Reveal Trapdoor" only once
-when take item lebowski_rug {
+when take lebowski_rug {
     do reveal exit from lounge to portal-room direction down
     do add flag found-portal-room
     do award points 3
@@ -421,7 +421,7 @@ when use item coffee_machine ability turnOn
 }
 
 trigger "Lounge: Coffee Taken"
-when take item hot_coffee
+when take hot_coffee
 {
     do remove flag coffee-brewed
 }
@@ -553,7 +553,7 @@ when act handle on item invitation {
 }
 
 trigger "Aperture-Lab: Drop Invitation Without Insulation"
-when take item invitation {
+when take invitation {
     do replace drop item invitation with invitation
     do show "You burn your fingers and drop the invitation on the floor. It emits a reddish glow, and shimmers from the radiating heat."
 }
@@ -576,7 +576,7 @@ when talk to npc black_knight {
 }
 
 trigger "Sublevel-1-Entrance: Taking Sword Angers Knight"
-when take item dull_longsword from npc black_knight {
+when take dull_longsword from npc black_knight {
     do set npc state black_knight mad
     do npc says black_knight "Wha-- HEY! Give that back, you -- you -- cowardly cur!"
 }
@@ -636,7 +636,7 @@ when act open on item evidence_locker_closed {
 }
 
 trigger "Security-Station: Take Sonic Screwdriver" only once
-when take item sonic_screwdriver {
+when take sonic_screwdriver {
     do add flag got-sonic
     do award points 3
 }
@@ -677,7 +677,7 @@ when enter room med-bay {
 }
 
 trigger "Med-Bay: Advance Sequence when Broken Emitter Found" only once
-when take item broken_emitter {
+when take broken_emitter {
     # advance to mobilize-emh#1
     do advance flag mobilize-emh
 }
@@ -822,7 +822,7 @@ when always {
 }
 
 trigger "Towel / Plaque Hint" only once
-when take item towel {
+when take towel {
     do add flag got-towel
     do award points 3
     do show "NOW you're a frood who really \"knows where his towel is\"!"
@@ -929,7 +929,7 @@ when open item delivery_box {
 }
 
 trigger "Global: Take Vogon Poetry"
-when take item vogon_poetry_book
+when take vogon_poetry_book
 {
     do show "A greasy feeling of nausea overcomes you."
 }

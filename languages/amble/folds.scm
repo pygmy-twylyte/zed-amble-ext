@@ -112,6 +112,6 @@
 
 (give_to_npc) @fold
 
-(take_from_npc) @fold
+(take_item) @fold
 
 (insert_item_into) @fold

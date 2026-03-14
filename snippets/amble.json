@@ -174,9 +174,9 @@
   },
   "amble-when-take-item": {
     "prefix": "amble-when-take",
-    "description": "Amble DSL: when take item",
+    "description": "Amble DSL: when take",
     "body": [
-      "when take item ${1:item-id} {",
+      "when take ${1:item-id} {",
       "    do ${2:show \"Message\"}",
       "}"
     ]
