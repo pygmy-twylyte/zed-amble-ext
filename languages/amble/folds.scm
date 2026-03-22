@@ -13,6 +13,8 @@
 
 (set_decl) @fold
 
+(action_set_decl) @fold
+
 ; Block structures
 (room_block
   "{" @fold.start
@@ -27,6 +29,10 @@
   "}" @fold.end) @fold
 
 (trigger_block
+  "{" @fold.start
+  "}" @fold.end) @fold
+
+(action_set_block
   "{" @fold.start
   "}" @fold.end) @fold
 
@@ -58,7 +64,7 @@
   "{" @fold.start
   "}" @fold.end) @fold
 
-(cond_block
+(cond_body
   "{" @fold.start
   "}" @fold.end) @fold
 

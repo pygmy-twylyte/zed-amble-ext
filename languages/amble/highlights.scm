@@ -19,6 +19,10 @@
 
 (set_name) @variable
 
+(cond_name) @variable.special
+
+(action_set_name) @function
+
 ; Things with defined variants
 (item_ability) @variant
 
@@ -60,7 +64,9 @@
 ; Global Markups
 [
   "if"
+  "else"
   "do"
+  "run"
   "when"
 ] @keyword
 
@@ -82,6 +88,20 @@
   [
     "let"
     "set"
+  ] @keyword
+  "=" @operator)
+
+(cond_decl
+  [
+    "let"
+    "cond"
+  ] @keyword
+  "=" @operator)
+
+(action_set_decl
+  [
+    "let"
+    "actions"
   ] @keyword
   "=" @operator)
 

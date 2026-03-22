@@ -1,8 +1,8 @@
 use crate::backend::Backend;
 use crate::symbols::{
-    sanitize_markdown, FlagMetadata, ItemMetadata, Movability, NpcMetadata, RoomMetadata,
-    SetMetadata, SymbolDefinition, SymbolIndex, SymbolKind, SymbolLocation, SymbolMetadata,
-    SymbolOccurrence, SymbolReference,
+    sanitize_markdown, ActionSetMetadata, CondMetadata, FlagMetadata, ItemMetadata, Movability,
+    NpcMetadata, RoomMetadata, SetMetadata, SymbolDefinition, SymbolIndex, SymbolKind,
+    SymbolLocation, SymbolMetadata, SymbolOccurrence, SymbolReference,
 };
 use crate::text::Document;
 use std::collections::HashSet;
@@ -571,6 +571,157 @@ impl Backend {
             }
         }
 
+        let mut cursor = QueryCursor::new();
+        let mut matches =
+            cursor.matches(&self.queries.cond_definitions, root_node, text.as_bytes());
+        while let Some(m) = matches.next() {
+            for capture in m.captures {
+                let node = capture.node;
+                let cond_name = slice_text(text, &node).trim();
+                if cond_name.is_empty() {
+                    continue;
+                }
+
+                let range = range_from_node(&document, &node);
+                let expression = node
+                    .parent()
+                    .map(|cond_node| extract_cond_expression(&cond_node, text))
+                    .unwrap_or_default();
+
+                let location = SymbolLocation {
+                    uri: uri.clone(),
+                    range: range.clone(),
+                    rename_range: None,
+                };
+
+                self.symbols.conds.insert_definition(
+                    cond_name.to_string(),
+                    SymbolDefinition {
+                        location,
+                        metadata: SymbolMetadata::Cond(CondMetadata { expression }),
+                    },
+                );
+
+                occurrences.push(SymbolOccurrence {
+                    kind: SymbolKind::Cond,
+                    id: cond_name.to_string(),
+                    range,
+                });
+            }
+        }
+
+        let mut cursor = QueryCursor::new();
+        let mut matches = cursor.matches(&self.queries.cond_references, root_node, text.as_bytes());
+        while let Some(m) = matches.next() {
+            for capture in m.captures {
+                let node = capture.node;
+                let cond_name = slice_text(text, &node).trim();
+                if cond_name.is_empty() {
+                    continue;
+                }
+
+                let range = range_from_node(&document, &node);
+                let location = SymbolLocation {
+                    uri: uri.clone(),
+                    range: range.clone(),
+                    rename_range: None,
+                };
+
+                self.symbols.conds.add_reference(
+                    cond_name.to_string(),
+                    SymbolReference {
+                        location,
+                        raw_id: cond_name.to_string(),
+                    },
+                );
+
+                occurrences.push(SymbolOccurrence {
+                    kind: SymbolKind::Cond,
+                    id: cond_name.to_string(),
+                    range,
+                });
+            }
+        }
+
+        let mut cursor = QueryCursor::new();
+        let mut matches = cursor.matches(
+            &self.queries.action_set_definitions,
+            root_node,
+            text.as_bytes(),
+        );
+        while let Some(m) = matches.next() {
+            for capture in m.captures {
+                let node = capture.node;
+                let action_set_name = slice_text(text, &node).trim();
+                if action_set_name.is_empty() {
+                    continue;
+                }
+
+                let range = range_from_node(&document, &node);
+                let body = node
+                    .parent()
+                    .map(|action_set_node| extract_action_set_body(&action_set_node, text))
+                    .unwrap_or_default();
+
+                let location = SymbolLocation {
+                    uri: uri.clone(),
+                    range: range.clone(),
+                    rename_range: None,
+                };
+
+                self.symbols.action_sets.insert_definition(
+                    action_set_name.to_string(),
+                    SymbolDefinition {
+                        location,
+                        metadata: SymbolMetadata::ActionSet(ActionSetMetadata { body }),
+                    },
+                );
+
+                occurrences.push(SymbolOccurrence {
+                    kind: SymbolKind::ActionSet,
+                    id: action_set_name.to_string(),
+                    range,
+                });
+            }
+        }
+
+        let mut cursor = QueryCursor::new();
+        let mut matches = cursor.matches(
+            &self.queries.action_set_references,
+            root_node,
+            text.as_bytes(),
+        );
+        while let Some(m) = matches.next() {
+            for capture in m.captures {
+                let node = capture.node;
+                let action_set_name = slice_text(text, &node).trim();
+                if action_set_name.is_empty() {
+                    continue;
+                }
+
+                let range = range_from_node(&document, &node);
+                let location = SymbolLocation {
+                    uri: uri.clone(),
+                    range: range.clone(),
+                    rename_range: None,
+                };
+
+                self.symbols.action_sets.add_reference(
+                    action_set_name.to_string(),
+                    SymbolReference {
+                        location,
+                        raw_id: action_set_name.to_string(),
+                    },
+                );
+
+                occurrences.push(SymbolOccurrence {
+                    kind: SymbolKind::ActionSet,
+                    id: action_set_name.to_string(),
+                    range,
+                });
+            }
+        }
+
         let player_starts = collect_player_starts(&document, root_node, text, uri);
         self.player_starts.insert(uri_str.clone(), player_starts);
 
@@ -760,6 +911,48 @@ impl Backend {
             }
         }
 
+        for entry in self.symbols.conds.references_iter() {
+            let cond_name = entry.key();
+            if !self.symbols.conds.has_definition(cond_name) {
+                for reference in entry.value() {
+                    if reference.location.uri == *uri {
+                        diagnostics.push(Diagnostic {
+                            range: reference.location.range,
+                            severity: Some(DiagnosticSeverity::ERROR),
+                            code: None,
+                            code_description: None,
+                            source: Some("amble-lsp".to_string()),
+                            message: format!("Undefined condition alias: '{}'", reference.raw_id),
+                            related_information: None,
+                            tags: None,
+                            data: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        for entry in self.symbols.action_sets.references_iter() {
+            let action_set_name = entry.key();
+            if !self.symbols.action_sets.has_definition(action_set_name) {
+                for reference in entry.value() {
+                    if reference.location.uri == *uri {
+                        diagnostics.push(Diagnostic {
+                            range: reference.location.range,
+                            severity: Some(DiagnosticSeverity::ERROR),
+                            code: None,
+                            code_description: None,
+                            source: Some("amble-lsp".to_string()),
+                            message: format!("Undefined action set: '{}'", reference.raw_id),
+                            related_information: None,
+                            tags: None,
+                            data: None,
+                        });
+                    }
+                }
+            }
+        }
+
         self.append_duplicate_definition_diagnostics(uri, &mut diagnostics);
         self.append_unused_definition_diagnostics(uri, &mut diagnostics);
         self.append_metadata_diagnostics(uri, &mut diagnostics);
@@ -814,6 +1007,18 @@ impl Backend {
             diagnostics,
             SymbolKind::Set,
             &self.symbols.sets,
+        );
+        self.append_duplicate_diagnostics_for_index(
+            uri,
+            diagnostics,
+            SymbolKind::Cond,
+            &self.symbols.conds,
+        );
+        self.append_duplicate_diagnostics_for_index(
+            uri,
+            diagnostics,
+            SymbolKind::ActionSet,
+            &self.symbols.action_sets,
         );
     }
 
@@ -894,6 +1099,13 @@ impl Backend {
         self.append_unused_for_index(uri, diagnostics, SymbolKind::Npc, &self.symbols.npcs);
         self.append_unused_for_index(uri, diagnostics, SymbolKind::Flag, &self.symbols.flags);
         self.append_unused_for_index(uri, diagnostics, SymbolKind::Set, &self.symbols.sets);
+        self.append_unused_for_index(uri, diagnostics, SymbolKind::Cond, &self.symbols.conds);
+        self.append_unused_for_index(
+            uri,
+            diagnostics,
+            SymbolKind::ActionSet,
+            &self.symbols.action_sets,
+        );
     }
 
     fn append_unused_for_index(
@@ -1165,6 +1377,8 @@ pub(crate) fn format_hover(
         SymbolMetadata::Npc(meta) => format_npc_hover(id, meta, relative_path),
         SymbolMetadata::Flag(meta) => format_flag_hover(id, meta, relative_path),
         SymbolMetadata::Set(meta) => format_set_hover(id, meta, relative_path),
+        SymbolMetadata::Cond(meta) => format_cond_hover(id, meta, relative_path),
+        SymbolMetadata::ActionSet(meta) => format_action_set_hover(id, meta, relative_path),
     }
 }
 
@@ -1299,6 +1513,42 @@ fn format_set_hover(id: &str, meta: &SetMetadata, relative_path: Option<&str>) -
                 .map(|room| sanitize_markdown(room))
                 .collect::<Vec<_>>()
                 .join(", ")
+        }
+    ));
+    lines.join("\n")
+}
+
+fn format_cond_hover(id: &str, meta: &CondMetadata, relative_path: Option<&str>) -> String {
+    let mut lines = vec![entity_title_line("COND", None, id)];
+    if let Some(location_line) = definition_path_line(relative_path) {
+        lines.push(location_line);
+    }
+    lines.push(format!(
+        "- **Expression:** {}",
+        if meta.expression.trim().is_empty() {
+            "(empty)".to_string()
+        } else {
+            sanitize_markdown(meta.expression.trim())
+        }
+    ));
+    lines.join("\n")
+}
+
+fn format_action_set_hover(
+    id: &str,
+    meta: &ActionSetMetadata,
+    relative_path: Option<&str>,
+) -> String {
+    let mut lines = vec![entity_title_line("ACTION SET", None, id)];
+    if let Some(location_line) = definition_path_line(relative_path) {
+        lines.push(location_line);
+    }
+    lines.push(format!(
+        "- **Body:** {}",
+        if meta.body.trim().is_empty() {
+            "(empty)".to_string()
+        } else {
+            sanitize_markdown(meta.body.trim())
         }
     ));
     lines.join("\n")
@@ -1444,6 +1694,16 @@ fn named_child_by_kind<'tree>(node: &Node<'tree>, kind: &str) -> Option<Node<'tr
     let mut cursor = node.walk();
     for child in node.named_children(&mut cursor) {
         if child.kind() == kind {
+            return Some(child);
+        }
+    }
+    None
+}
+
+fn named_child_by_field_name<'tree>(node: &Node<'tree>, field_name: &str) -> Option<Node<'tree>> {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if field_name_for_child(node, &child) == Some(field_name) {
             return Some(child);
         }
     }
@@ -1770,6 +2030,23 @@ fn extract_set_rooms(set_node: &Node, text: &str) -> Vec<String> {
     }
 }
 
+fn extract_cond_expression(cond_node: &Node, text: &str) -> String {
+    if let Some(expr_node) = named_child_by_kind(cond_node, "trigger_cond") {
+        return slice_text(text, &expr_node).trim().to_string();
+    }
+    if let Some(expr_node) = named_child_by_field_name(cond_node, "condition") {
+        return slice_text(text, &expr_node).trim().to_string();
+    }
+    String::new()
+}
+
+fn extract_action_set_body(action_set_node: &Node, text: &str) -> String {
+    if let Some(body_node) = named_child_by_field_name(action_set_node, "body") {
+        return slice_text(text, &body_node).trim().to_string();
+    }
+    String::new()
+}
+
 /// Walks the syntax tree and records every `player_start room ...` statement for diagnostics.
 fn collect_player_starts(
     document: &Document,
@@ -1851,6 +2128,8 @@ fn symbol_kind_from_kind(kind: &str) -> Option<SymbolKind> {
         "npc_id" | "_npc_ref" => Some(SymbolKind::Npc),
         "flag_name" | "_flag_ref" => Some(SymbolKind::Flag),
         "set_name" | "_set_ref" => Some(SymbolKind::Set),
+        "cond_name" | "_cond_ref" => Some(SymbolKind::Cond),
+        "action_set_name" | "_action_set_ref" => Some(SymbolKind::ActionSet),
         _ => None,
     }
 }
@@ -1862,6 +2141,8 @@ fn symbol_kind_from_field(field_name: &str) -> Option<SymbolKind> {
         "npc_id" => Some(SymbolKind::Npc),
         "flag_name" | "flag" => Some(SymbolKind::Flag),
         "set_name" => Some(SymbolKind::Set),
+        "cond_name" => Some(SymbolKind::Cond),
+        "action_set_name" => Some(SymbolKind::ActionSet),
         _ => None,
     }
 }
@@ -1876,6 +2157,8 @@ fn is_definition_node<'tree>(node: &Node<'tree>, symbol_type: SymbolKind) -> boo
             SymbolKind::Npc => kind == "npc_def",
             SymbolKind::Flag => kind == "action_add_flag" || kind == "action_add_seq",
             SymbolKind::Set => kind == "set_decl",
+            SymbolKind::Cond => kind == "cond_decl",
+            SymbolKind::ActionSet => kind == "action_set_decl",
         };
 
         if is_definition {
@@ -1898,6 +2181,8 @@ fn is_definition_field(parent_kind: &str, field_name: &str, symbol_type: SymbolK
                 || (parent_kind == "action_add_seq" && field_name == "flag_name")
         }
         SymbolKind::Set => parent_kind == "set_decl" && field_name == "name",
+        SymbolKind::Cond => parent_kind == "cond_decl" && field_name == "name",
+        SymbolKind::ActionSet => parent_kind == "action_set_decl" && field_name == "name",
     }
 }
 
@@ -2068,6 +2353,22 @@ mod tests {
         let position = position_for_token(source, 1, "quest_flag", 2);
         let symbol = completion_at(source, position);
         assert_eq!(symbol, Some(SymbolKind::Flag));
+    }
+
+    #[test]
+    fn detects_condition_alias_reference_context_in_conditions() {
+        let source = "let cond radio_ready = has flag hint-radio-on\ntrigger \"hint\" when always {\n    if radio_ready {\n        do show \"\"\n    }\n}\n";
+        let position = position_for_token(source, 2, "radio_ready", 2);
+        let symbol = completion_at(source, position);
+        assert_eq!(symbol, Some(SymbolKind::Cond));
+    }
+
+    #[test]
+    fn detects_action_set_reference_context_in_run_statements() {
+        let source = "let actions common_steps = {\n    do show \"\"\n}\ntrigger \"hint\" when always {\n    run common_steps\n}\n";
+        let position = position_for_token(source, 4, "common_steps", 2);
+        let symbol = completion_at(source, position);
+        assert_eq!(symbol, Some(SymbolKind::ActionSet));
     }
 
     #[test]
@@ -2343,5 +2644,77 @@ mod tests {
             }
         }
         assert!(flag_refs.iter().any(|id| id == "quest#2"));
+    }
+
+    #[test]
+    fn query_indexing_covers_condition_alias_definitions_and_references() {
+        let source = r#"let cond radio_ready = all(has item hint_radio, has flag hint-radio-on)
+
+trigger "hint" when always {
+    if radio_ready {
+        do show ""
+    }
+}
+"#;
+
+        let tree = parse_source(source);
+        let root = tree.root_node();
+        let queries = Queries::new();
+
+        let mut cursor = QueryCursor::new();
+        let mut cond_defs = Vec::new();
+        let mut matches = cursor.matches(&queries.cond_definitions, root, source.as_bytes());
+        while let Some(m) = matches.next() {
+            for capture in m.captures {
+                cond_defs.push(slice_text(source, &capture.node).trim().to_string());
+            }
+        }
+        assert_eq!(cond_defs, vec!["radio_ready".to_string()]);
+
+        let mut cursor = QueryCursor::new();
+        let mut cond_refs = Vec::new();
+        let mut matches = cursor.matches(&queries.cond_references, root, source.as_bytes());
+        while let Some(m) = matches.next() {
+            for capture in m.captures {
+                cond_refs.push(slice_text(source, &capture.node).trim().to_string());
+            }
+        }
+        assert_eq!(cond_refs, vec!["radio_ready".to_string()]);
+    }
+
+    #[test]
+    fn query_indexing_covers_action_set_definitions_and_references() {
+        let source = r#"let actions common_steps = {
+    do show ""
+}
+
+trigger "hint" when always {
+    run common_steps
+}
+"#;
+
+        let tree = parse_source(source);
+        let root = tree.root_node();
+        let queries = Queries::new();
+
+        let mut cursor = QueryCursor::new();
+        let mut defs = Vec::new();
+        let mut matches = cursor.matches(&queries.action_set_definitions, root, source.as_bytes());
+        while let Some(m) = matches.next() {
+            for capture in m.captures {
+                defs.push(slice_text(source, &capture.node).trim().to_string());
+            }
+        }
+        assert_eq!(defs, vec!["common_steps".to_string()]);
+
+        let mut cursor = QueryCursor::new();
+        let mut refs = Vec::new();
+        let mut matches = cursor.matches(&queries.action_set_references, root, source.as_bytes());
+        while let Some(m) = matches.next() {
+            for capture in m.captures {
+                refs.push(slice_text(source, &capture.node).trim().to_string());
+            }
+        }
+        assert_eq!(refs, vec!["common_steps".to_string()]);
     }
 }

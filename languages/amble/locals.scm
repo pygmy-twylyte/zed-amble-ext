@@ -3,6 +3,8 @@
 (npc_def   npc_id: (npc_id)  @local.definition)
 (goal_def goal_id: (goal_id)  @local.definition)
 (spinner_def name: (spinner_id) @local.definition)
+(cond_decl name: (cond_name) @local.definition)
+(action_set_decl name: (action_set_name) @local.definition)
 
 (_room_ref    (room_id)    @local.reference)
 (_item_ref    (item_id)    @local.reference)
@@ -10,3 +12,5 @@
 (_flag_ref    (flag_name)  @local.reference)
 (_goal_ref    (goal_id)    @local.reference)
 (_spinner_ref (spinner_id) @local.reference)
+(_cond_ref    (cond_name)  @local.reference)
+(_action_set_ref (action_set_name) @local.reference)

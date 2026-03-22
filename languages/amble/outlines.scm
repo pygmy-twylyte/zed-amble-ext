@@ -22,3 +22,11 @@
 ((trigger_def
     (entity_name) @name)
 @item)
+
+((cond_decl
+    (cond_name) @name)
+@item)
+
+((action_set_decl
+    (action_set_name) @name)
+@item)

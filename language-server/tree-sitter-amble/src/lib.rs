@@ -140,7 +140,10 @@ trigger "test" when enter room other-room {
             }
         }
 
-        assert!(room_refs.len() >= 2, "should find at least 2 room references");
+        assert!(
+            room_refs.len() >= 2,
+            "should find at least 2 room references"
+        );
         assert!(room_refs.contains(&"other-room".to_string()));
         assert!(room_refs.contains(&"test-room".to_string()));
     }
@@ -156,12 +159,47 @@ trigger "test" when enter room other-room {
 trigger "simple" when take foo { do show "x" }
 trigger "npc" when take foo from npc bar { do show "x" }
 trigger "item" when take foo from item chest { do show "x" }
+trigger "[Poetry-Panic] Acquired Elevator Keycard" only once
+when take elevator_keycard {
+    do set npc state demerzel bored
+    do add flag got-elevator-keycard
+    do modify item aa_3_button_main {
+        name "[AA-3] Button"
+        desc "The button to send the elevator to sublevel AA-3, now pulsing with a quiet intensity."
+    }
+}
 "#;
 
         let tree = parser.parse(source_code, None).unwrap();
         assert!(
             !tree.root_node().has_error(),
             "updated take forms should parse cleanly"
+        );
+    }
+
+    #[test]
+    fn test_parse_trigger_if_else_chain() {
+        use tree_sitter::Parser;
+
+        let mut parser = Parser::new();
+        parser.set_language(&language()).unwrap();
+
+        let source_code = r#"
+trigger "branch" when always {
+    if has flag radio-ready {
+        do show "ready"
+    } else if has item badge {
+        do show "badge"
+    } else {
+        do show "fallback"
+    }
+}
+"#;
+
+        let tree = parser.parse(source_code, None).unwrap();
+        assert!(
+            !tree.root_node().has_error(),
+            "if/else chains in trigger blocks should parse cleanly"
         );
     }
 }

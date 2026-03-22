@@ -9,6 +9,8 @@ pub enum SymbolKind {
     Npc,
     Flag,
     Set,
+    Cond,
+    ActionSet,
 }
 
 impl SymbolKind {
@@ -19,6 +21,8 @@ impl SymbolKind {
             SymbolKind::Npc => "NPC",
             SymbolKind::Flag => "Flag",
             SymbolKind::Set => "Set",
+            SymbolKind::Cond => "Condition Alias",
+            SymbolKind::ActionSet => "Action Set",
         }
     }
 }
@@ -55,6 +59,8 @@ pub enum SymbolMetadata {
     Npc(NpcMetadata),
     Flag(FlagMetadata),
     Set(SetMetadata),
+    Cond(CondMetadata),
+    ActionSet(ActionSetMetadata),
 }
 
 #[derive(Debug, Clone)]
@@ -92,6 +98,16 @@ pub struct FlagMetadata {
 #[derive(Debug, Clone)]
 pub struct SetMetadata {
     pub rooms: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CondMetadata {
+    pub expression: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ActionSetMetadata {
+    pub body: String,
 }
 
 #[derive(Debug, Clone)]
@@ -202,7 +218,9 @@ impl SymbolIndex {
         self.references.iter()
     }
 
-    pub fn duplicate_definitions_iter(&self) -> dashmap::iter::Iter<'_, String, Vec<SymbolDefinition>> {
+    pub fn duplicate_definitions_iter(
+        &self,
+    ) -> dashmap::iter::Iter<'_, String, Vec<SymbolDefinition>> {
         self.duplicates.iter()
     }
 }
@@ -214,6 +232,8 @@ pub struct SymbolStore {
     pub npcs: SymbolIndex,
     pub flags: SymbolIndex,
     pub sets: SymbolIndex,
+    pub conds: SymbolIndex,
+    pub action_sets: SymbolIndex,
 }
 
 impl SymbolStore {
@@ -224,6 +244,8 @@ impl SymbolStore {
             SymbolKind::Npc => &self.npcs,
             SymbolKind::Flag => &self.flags,
             SymbolKind::Set => &self.sets,
+            SymbolKind::Cond => &self.conds,
+            SymbolKind::ActionSet => &self.action_sets,
         }
     }
 
@@ -233,6 +255,8 @@ impl SymbolStore {
         self.npcs.clear_document(uri);
         self.flags.clear_document(uri);
         self.sets.clear_document(uri);
+        self.conds.clear_document(uri);
+        self.action_sets.clear_document(uri);
     }
 }
 
@@ -282,10 +306,7 @@ mod tests {
 
         index.clear_document(&Url::parse("file:///rooms/a.amble").unwrap());
 
-        assert!(index
-            .duplicate_definitions_iter()
-            .next()
-            .is_none());
+        assert!(index.duplicate_definitions_iter().next().is_none());
         let current = index.definition("room_a").unwrap();
         assert_eq!(
             current.location.uri,

@@ -118,6 +118,17 @@
       "}"
     ]
   },
+  "amble-trigger-if-else-block": {
+    "prefix": "amble-if-else",
+    "description": "Amble DSL: trigger if/else block",
+    "body": [
+      "if ${1:has flag some_flag} {",
+      "    do ${2:show \"If branch\"}",
+      "} else {",
+      "    do ${3:show \"Else branch\"}",
+      "}"
+    ]
+  },
   "amble-when-always": {
     "prefix": "amble-when-always",
     "description": "Amble DSL: when always",

@@ -18,6 +18,12 @@
 (spinner_def
   name: (spinner_id) @name) @definition.function
 
+(cond_decl
+  name: (cond_name) @name) @definition.constant
+
+(action_set_decl
+  name: (action_set_name) @name) @definition.function
+
 
 ; Optional: docstrings (adjacent leading comments)
 (
@@ -39,3 +45,5 @@
 (_flag_ref   (flag_name)  @name) @reference.macro
 (_goal_ref   (goal_id)    @name) @reference.module
 (_spinner_ref (spinner_id) @name) @reference.function
+(_cond_ref   (cond_name)  @name) @reference.constant
+(_action_set_ref (action_set_name) @name) @reference.function

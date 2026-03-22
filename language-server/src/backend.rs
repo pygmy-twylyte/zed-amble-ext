@@ -104,6 +104,18 @@ impl Backend {
             &self.symbols.sets,
             &mut symbols,
         );
+        self.push_document_symbols_for_index(
+            uri,
+            SymbolKind::Cond,
+            &self.symbols.conds,
+            &mut symbols,
+        );
+        self.push_document_symbols_for_index(
+            uri,
+            SymbolKind::ActionSet,
+            &self.symbols.action_sets,
+            &mut symbols,
+        );
         symbols
     }
 
@@ -153,6 +165,18 @@ impl Backend {
             query,
             SymbolKind::Set,
             &self.symbols.sets,
+            &mut symbols,
+        );
+        self.push_workspace_symbols_for_index(
+            query,
+            SymbolKind::Cond,
+            &self.symbols.conds,
+            &mut symbols,
+        );
+        self.push_workspace_symbols_for_index(
+            query,
+            SymbolKind::ActionSet,
+            &self.symbols.action_sets,
             &mut symbols,
         );
         symbols
@@ -328,6 +352,8 @@ fn definition_detail(definition: &SymbolDefinition) -> Option<String> {
                 Some(format!("Rooms: {}", meta.rooms.join(", ")))
             }
         }
+        SymbolMetadata::Cond(meta) => Some(meta.expression.clone()),
+        SymbolMetadata::ActionSet(meta) => Some(meta.body.clone()),
     }
 }
 
@@ -338,6 +364,8 @@ fn lsp_symbol_kind(kind: SymbolKind) -> tower_lsp::lsp_types::SymbolKind {
         SymbolKind::Npc => tower_lsp::lsp_types::SymbolKind::INTERFACE,
         SymbolKind::Flag => tower_lsp::lsp_types::SymbolKind::ENUM_MEMBER,
         SymbolKind::Set => tower_lsp::lsp_types::SymbolKind::NAMESPACE,
+        SymbolKind::Cond => tower_lsp::lsp_types::SymbolKind::CONSTANT,
+        SymbolKind::ActionSet => tower_lsp::lsp_types::SymbolKind::FUNCTION,
     }
 }
 
@@ -348,6 +376,8 @@ fn completion_item_kind(kind: SymbolKind) -> CompletionItemKind {
         SymbolKind::Npc => CompletionItemKind::FIELD,
         SymbolKind::Flag => CompletionItemKind::ENUM_MEMBER,
         SymbolKind::Set => CompletionItemKind::MODULE,
+        SymbolKind::Cond => CompletionItemKind::CONSTANT,
+        SymbolKind::ActionSet => CompletionItemKind::FUNCTION,
     }
 }
 

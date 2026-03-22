@@ -52,6 +52,26 @@ const SET_REF_QUERY: &str = r#"
 (set_name) @set.reference
 "#;
 
+const COND_DEF_QUERY: &str = r#"
+(cond_decl
+  name: (cond_name) @cond.definition)
+"#;
+
+const COND_REF_QUERY: &str = r#"
+(cond_alias_ref
+  cond_name: (cond_name) @cond.reference)
+"#;
+
+const ACTION_SET_DEF_QUERY: &str = r#"
+(action_set_decl
+  name: (action_set_name) @action_set.definition)
+"#;
+
+const ACTION_SET_REF_QUERY: &str = r#"
+(run_stmt
+  action_set_name: (action_set_name) @action_set.reference)
+"#;
+
 pub struct Queries {
     pub room_definitions: Query,
     pub room_references: Query,
@@ -63,6 +83,10 @@ pub struct Queries {
     pub flag_references: Query,
     pub set_definitions: Query,
     pub set_references: Query,
+    pub cond_definitions: Query,
+    pub cond_references: Query,
+    pub action_set_definitions: Query,
+    pub action_set_references: Query,
 }
 
 impl Queries {
@@ -79,16 +103,22 @@ impl Queries {
                 .expect("Bad item reference query"),
             npc_definitions: Query::new(&language, NPC_DEF_QUERY)
                 .expect("Bad npc definition query"),
-            npc_references: Query::new(&language, NPC_REF_QUERY)
-                .expect("Bad npc reference query"),
+            npc_references: Query::new(&language, NPC_REF_QUERY).expect("Bad npc reference query"),
             flag_definitions: Query::new(&language, FLAG_DEF_QUERY)
                 .expect("Bad flag definition query"),
             flag_references: Query::new(&language, FLAG_REF_QUERY)
                 .expect("Bad flag reference query"),
             set_definitions: Query::new(&language, SET_DEF_QUERY)
                 .expect("Bad set definition query"),
-            set_references: Query::new(&language, SET_REF_QUERY)
-                .expect("Bad set reference query"),
+            set_references: Query::new(&language, SET_REF_QUERY).expect("Bad set reference query"),
+            cond_definitions: Query::new(&language, COND_DEF_QUERY)
+                .expect("Bad condition alias definition query"),
+            cond_references: Query::new(&language, COND_REF_QUERY)
+                .expect("Bad condition alias reference query"),
+            action_set_definitions: Query::new(&language, ACTION_SET_DEF_QUERY)
+                .expect("Bad action set definition query"),
+            action_set_references: Query::new(&language, ACTION_SET_REF_QUERY)
+                .expect("Bad action set reference query"),
         }
     }
 }

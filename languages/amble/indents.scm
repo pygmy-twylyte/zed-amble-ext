@@ -11,7 +11,7 @@
   (flag_binary_block)
   (presence_pair_block)
   (npc_state_set_block)
-  (cond_block)
+  (cond_body)
 ] @indent
 
 ; Increase indentation for parenthetical lists
