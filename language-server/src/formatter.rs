@@ -319,6 +319,9 @@ impl<'a> ParenthesizedListFormatter<'a> {
         if node.kind() == "trigger_def" {
             self.ensure_trigger_spacing(&node, &indent);
         }
+        if node.kind() == "cond_else_clause" {
+            self.ensure_else_inline(&node);
+        }
 
         if let Some(replacement) = self.render_nested(&node, &indent) {
             self.replace(node.start_byte(), node.end_byte(), &replacement);
@@ -365,6 +368,17 @@ impl<'a> ParenthesizedListFormatter<'a> {
         }
     }
 
+    fn ensure_else_inline(&mut self, node: &Node) {
+        if let Some(prev) = node.prev_named_sibling() {
+            self.replace_whitespace_only(prev.end_byte(), node.start_byte(), " ");
+        }
+
+        if let Some(branch) = node.named_child(0) {
+            let else_end = node.start_byte() + "else".len();
+            self.replace_whitespace_only(else_end, branch.start_byte(), " ");
+        }
+    }
+
     fn previous_non_comment_sibling<'tree>(node: &Node<'tree>) -> Option<Node<'tree>> {
         let mut current = node.prev_sibling();
         while let Some(sibling) = current {
@@ -375,6 +389,20 @@ impl<'a> ParenthesizedListFormatter<'a> {
             return Some(sibling);
         }
         None
+    }
+
+    fn replace_whitespace_only(&mut self, start: usize, end: usize, replacement: &str) {
+        if start >= end || start < self.cursor {
+            return;
+        }
+        let between = &self.text[start..end];
+        if !between.chars().all(char::is_whitespace) {
+            return;
+        }
+        if between == replacement {
+            return;
+        }
+        self.replace(start, end, replacement);
     }
 
     fn replace(&mut self, start: usize, end: usize, replacement: &str) {
@@ -663,6 +691,27 @@ mod tests {
     fn multiple_trigger_notes_each_on_newline() {
         let source = "trigger \"Example\" note \"note a\" note \"note b\" when always {\n    do show \"\"\n}\n";
         let expected = "trigger \"Example\"\nnote \"note a\"\nnote \"note b\"\nwhen always {\n    do show \"\"\n}\n";
+        assert_eq!(format_document(source), expected);
+    }
+
+    #[test]
+    fn formats_else_clauses_inline_with_closing_brace() {
+        let source = "trigger \"example\" when always {\n    if has flag ready {\n        do show \"ready\"\n    }\n    else if has item badge {\n        do show \"badge\"\n    }\n    else {\n        do show \"fallback\"\n    }\n}\n";
+        let expected = "trigger \"example\"\nwhen always {\n    if has flag ready {\n        do show \"ready\"\n    } else if has item badge {\n        do show \"badge\"\n    } else {\n        do show \"fallback\"\n    }\n}\n";
+        assert_eq!(format_document(source), expected);
+    }
+
+    #[test]
+    fn formats_action_set_blocks_with_nested_else() {
+        let source = "let actions common_steps = {\nif has flag ready {\ndo show \"ready\"\n}\nelse {\ndo show \"fallback\"\n}\n}\n";
+        let expected = "let actions common_steps = {\n    if has flag ready {\n        do show \"ready\"\n    } else {\n        do show \"fallback\"\n    }\n}\n";
+        assert_eq!(format_document(source), expected);
+    }
+
+    #[test]
+    fn formats_condition_alias_groups() {
+        let source = "let cond radio_ready = any(has item hint_radio, has flag hint-radio-on, missing flag puzzle-solved)\n";
+        let expected = "let cond radio_ready = any(\n    has item hint_radio,\n    has flag hint-radio-on,\n    missing flag puzzle-solved,\n)\n";
         assert_eq!(format_document(source), expected);
     }
 }
