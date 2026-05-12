@@ -316,6 +316,9 @@ impl<'a> ParenthesizedListFormatter<'a> {
     fn format_node(&mut self, node: Node) -> bool {
         let indent = Self::line_indent(self.text, node.start_byte());
 
+        if node.kind() == "}" {
+            self.ensure_closing_brace_own_line(&node);
+        }
         if node.kind() == "trigger_def" {
             self.ensure_trigger_spacing(&node, &indent);
         }
@@ -377,6 +380,28 @@ impl<'a> ParenthesizedListFormatter<'a> {
             let else_end = node.start_byte() + "else".len();
             self.replace_whitespace_only(else_end, branch.start_byte(), " ");
         }
+    }
+
+    fn ensure_closing_brace_own_line(&mut self, node: &Node) {
+        let line_start = self.text[..node.start_byte()]
+            .rfind('\n')
+            .map(|idx| idx + 1)
+            .unwrap_or(0);
+        let before = &self.text[line_start..node.start_byte()];
+        if before.trim().is_empty() {
+            return;
+        }
+
+        let split_start = before
+            .rfind(|ch: char| !ch.is_whitespace())
+            .map(|idx| line_start + idx + 1)
+            .unwrap_or(line_start);
+        let indent = node
+            .parent()
+            .map(|parent| Self::line_indent(self.text, parent.start_byte()))
+            .unwrap_or_default();
+        let replacement = format!("\n{indent}");
+        self.replace(split_start, node.start_byte(), &replacement);
     }
 
     fn previous_non_comment_sibling<'tree>(node: &Node<'tree>) -> Option<Node<'tree>> {
@@ -698,6 +723,13 @@ mod tests {
     fn formats_else_clauses_inline_with_closing_brace() {
         let source = "trigger \"example\" when always {\n    if has flag ready {\n        do show \"ready\"\n    }\n    else if has item badge {\n        do show \"badge\"\n    }\n    else {\n        do show \"fallback\"\n    }\n}\n";
         let expected = "trigger \"example\"\nwhen always {\n    if has flag ready {\n        do show \"ready\"\n    } else if has item badge {\n        do show \"badge\"\n    } else {\n        do show \"fallback\"\n    }\n}\n";
+        assert_eq!(format_document(source), expected);
+    }
+
+    #[test]
+    fn pulls_closing_brace_off_statement_line_before_else() {
+        let source = "trigger \"example\" when always {\n    if has flag ready {\n        do show \"ready\"     } else {\n        do show \"fallback\"\n    }\n}\n";
+        let expected = "trigger \"example\"\nwhen always {\n    if has flag ready {\n        do show \"ready\"\n    } else {\n        do show \"fallback\"\n    }\n}\n";
         assert_eq!(format_document(source), expected);
     }
 

@@ -7,7 +7,7 @@ use dashmap::{DashMap, DashSet};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tower_lsp::jsonrpc::Result;
+use tower_lsp::jsonrpc::{Error as JsonRpcError, Result};
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer};
 use tree_sitter::Parser;
@@ -56,6 +56,7 @@ impl Backend {
         kind: SymbolKind,
         id: &str,
         definition: &SymbolDefinition,
+        sort_text: String,
     ) -> CompletionItem {
         let path_hint = self.definition_display_path(&definition.location.uri);
         let documentation = format_hover(id, definition, path_hint.as_deref());
@@ -67,7 +68,16 @@ impl Backend {
                 kind: MarkupKind::Markdown,
                 value: documentation,
             })),
-            sort_text: Some(id.to_string()),
+            sort_text: Some(sort_text),
+            ..Default::default()
+        }
+    }
+
+    fn keyword_completion_item(keyword: &str, sort_text: String) -> CompletionItem {
+        CompletionItem {
+            label: keyword.to_string(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            sort_text: Some(sort_text),
             ..Default::default()
         }
     }
@@ -424,6 +434,7 @@ impl LanguageServer for Backend {
                 completion_provider: Some(CompletionOptions::default()),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 document_formatting_provider: Some(OneOf::Left(true)),
+                document_highlight_provider: Some(OneOf::Left(true)),
                 rename_provider: Some(OneOf::Right(RenameOptions {
                     prepare_provider: Some(true),
                     work_done_progress_options: WorkDoneProgressOptions::default(),
@@ -590,9 +601,7 @@ impl LanguageServer for Backend {
         let position = params.text_document_position.position;
         let new_name = params.new_name;
 
-        if new_name.is_empty() {
-            return Ok(None);
-        }
+        validate_identifier(&new_name).map_err(JsonRpcError::invalid_params)?;
 
         if let Some((symbol_type, id)) = self.get_symbol_at_position(&uri, position) {
             let edits = self.collect_rename_edits(symbol_type, &id, &new_name);
@@ -606,6 +615,31 @@ impl LanguageServer for Backend {
         }
 
         Ok(None)
+    }
+
+    async fn document_highlight(
+        &self,
+        params: DocumentHighlightParams,
+    ) -> Result<Option<Vec<DocumentHighlight>>> {
+        let uri = params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+
+        let Some(occurrence) = self.get_symbol_occurrence_at_position(&uri, position) else {
+            return Ok(None);
+        };
+        let uri_str = uri.to_string();
+        let Some(occurrences) = self.document_symbols.get(&uri_str) else {
+            return Ok(None);
+        };
+
+        let highlights =
+            collect_document_highlights(occurrences.value(), occurrence.kind, &occurrence.id);
+
+        if highlights.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(highlights))
+        }
     }
 
     async fn prepare_rename(
@@ -687,23 +721,67 @@ impl LanguageServer for Backend {
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
         let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
+        let uri_str = uri.to_string();
+        let prefix = self
+            .documents
+            .get(&uri_str)
+            .and_then(|doc| {
+                let text = doc.text().to_string();
+                let offset = doc.offset(position)?;
+                Some(completion_prefix(&text, offset))
+            })
+            .unwrap_or_default();
+        let prefix_lower = prefix.to_lowercase();
+        let mut items = Vec::new();
 
         if let Some(symbol_type) = self.get_completion_context(&uri, position) {
             let index = self.symbols.index(symbol_type);
-            let mut items = Vec::new();
+            let mut definitions: Vec<_> = index
+                .definitions_iter()
+                .map(|entry| (entry.key().clone(), entry.value().clone()))
+                .collect();
+            definitions.sort_by(|(left_id, _), (right_id, _)| {
+                completion_rank(left_id, &prefix_lower)
+                    .cmp(&completion_rank(right_id, &prefix_lower))
+                    .then_with(|| left_id.cmp(right_id))
+            });
 
-            for entry in index.definitions_iter() {
-                let id = entry.key().clone();
-                let definition = entry.value().clone();
-                items.push(self.completion_item_from_definition(symbol_type, &id, &definition));
-            }
-
-            if !items.is_empty() {
-                return Ok(Some(CompletionResponse::Array(items)));
+            for (index, (id, definition)) in definitions.into_iter().enumerate() {
+                let sort_text = format!(
+                    "{}-{:04}-{}",
+                    completion_rank(&id, &prefix_lower),
+                    index,
+                    id
+                );
+                items.push(self.completion_item_from_definition(
+                    symbol_type,
+                    &id,
+                    &definition,
+                    sort_text,
+                ));
             }
         }
 
-        Ok(None)
+        let mut keyword_index = 0usize;
+        for keyword in self.get_completion_keywords(&uri, position) {
+            if !prefix_lower.is_empty() && !keyword.to_lowercase().starts_with(&prefix_lower) {
+                continue;
+            }
+            let sort_text = format!(
+                "{}-kw-{:04}-{}",
+                completion_rank(keyword, &prefix_lower),
+                keyword_index,
+                keyword
+            );
+            keyword_index += 1;
+            items.push(Self::keyword_completion_item(keyword, sort_text));
+        }
+
+        if items.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(CompletionResponse::Array(items)))
+        }
     }
 }
 
@@ -722,4 +800,199 @@ fn range_contains(range: &Range, position: Position) -> bool {
 
 fn file_modified(path: &std::path::Path) -> Option<std::time::SystemTime> {
     std::fs::metadata(path).ok()?.modified().ok()
+}
+
+fn collect_document_highlights(
+    occurrences: &[crate::symbols::SymbolOccurrence],
+    kind: SymbolKind,
+    id: &str,
+) -> Vec<DocumentHighlight> {
+    occurrences
+        .iter()
+        .filter(|occurrence| occurrence.kind == kind && occurrence.id == id)
+        .map(|occurrence| DocumentHighlight {
+            range: occurrence.range,
+            kind: Some(DocumentHighlightKind::TEXT),
+        })
+        .collect()
+}
+
+fn completion_prefix(text: &str, offset: usize) -> String {
+    let mut start = offset;
+    while start > 0 {
+        let ch = text[..start].chars().next_back().unwrap();
+        if !is_identifier_char(ch) {
+            break;
+        }
+        start -= ch.len_utf8();
+    }
+    text[start..offset].to_string()
+}
+
+fn completion_rank(label: &str, prefix_lower: &str) -> u8 {
+    if prefix_lower.is_empty() {
+        return 1;
+    }
+    let label_lower = label.to_lowercase();
+    if label_lower == prefix_lower {
+        0
+    } else if label_lower.starts_with(prefix_lower) {
+        1
+    } else if label_lower.contains(prefix_lower) {
+        2
+    } else {
+        3
+    }
+}
+
+fn is_identifier_char(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | ':' | '#')
+}
+
+fn validate_identifier(id: &str) -> std::result::Result<(), &'static str> {
+    if id.is_empty() {
+        return Err("Identifier cannot be empty");
+    }
+    if !id.chars().all(is_identifier_char) {
+        return Err("Identifier contains unsupported characters");
+    }
+    if RESERVED_IDENTIFIERS.contains(&id) {
+        return Err("Identifier cannot be a reserved keyword");
+    }
+    Ok(())
+}
+
+const RESERVED_IDENTIFIERS: &[&str] = &[
+    "actions",
+    "act",
+    "add",
+    "all",
+    "always",
+    "any",
+    "author",
+    "blurb",
+    "cancel",
+    "cond",
+    "container",
+    "current",
+    "desc",
+    "description",
+    "do",
+    "drop",
+    "else",
+    "enter",
+    "flag",
+    "game",
+    "goal",
+    "if",
+    "in",
+    "insert",
+    "intro",
+    "item",
+    "let",
+    "location",
+    "max_hp",
+    "missing",
+    "name",
+    "npc",
+    "note",
+    "onFalse",
+    "only",
+    "once",
+    "open",
+    "player",
+    "priority",
+    "rank",
+    "report_title",
+    "room",
+    "run",
+    "scoring",
+    "set",
+    "show",
+    "slug",
+    "spinner",
+    "start",
+    "take",
+    "title",
+    "trigger",
+    "use",
+    "version",
+    "when",
+];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::symbols::{SymbolKind, SymbolOccurrence};
+    use tower_lsp::lsp_types::{Position, Range};
+
+    #[test]
+    fn document_highlights_collect_all_matching_occurrences() {
+        let occurrences = vec![
+            SymbolOccurrence {
+                kind: SymbolKind::Item,
+                id: "badge".into(),
+                range: Range {
+                    start: Position {
+                        line: 1,
+                        character: 4,
+                    },
+                    end: Position {
+                        line: 1,
+                        character: 9,
+                    },
+                },
+            },
+            SymbolOccurrence {
+                kind: SymbolKind::Item,
+                id: "badge".into(),
+                range: Range {
+                    start: Position {
+                        line: 3,
+                        character: 8,
+                    },
+                    end: Position {
+                        line: 3,
+                        character: 13,
+                    },
+                },
+            },
+            SymbolOccurrence {
+                kind: SymbolKind::Flag,
+                id: "badge".into(),
+                range: Range {
+                    start: Position {
+                        line: 5,
+                        character: 2,
+                    },
+                    end: Position {
+                        line: 5,
+                        character: 7,
+                    },
+                },
+            },
+        ];
+
+        let highlights = collect_document_highlights(&occurrences, SymbolKind::Item, "badge");
+        assert_eq!(highlights.len(), 2);
+    }
+
+    #[test]
+    fn completion_prefix_uses_amble_identifier_chars() {
+        assert_eq!(completion_prefix("run common_steps", 16), "common_steps");
+        assert_eq!(completion_prefix("if has flag quest#1", 19), "quest#1");
+    }
+
+    #[test]
+    fn completion_rank_prefers_exact_and_prefix_matches() {
+        assert!(completion_rank("badge", "badge") < completion_rank("badge-holder", "badge"));
+        assert!(completion_rank("badge-holder", "badge") < completion_rank("guild-badge", "badge"));
+    }
+
+    #[test]
+    fn rename_validation_rejects_bad_identifiers() {
+        assert!(validate_identifier("sect-shoe").is_ok());
+        assert!(validate_identifier("bad name").is_err());
+        assert!(validate_identifier("if").is_err());
+    }
 }

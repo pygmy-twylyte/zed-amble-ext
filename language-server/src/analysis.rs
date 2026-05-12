@@ -780,10 +780,7 @@ impl Backend {
         };
 
         let root_node = tree.root_node();
-        let mut candidate_offsets = vec![offset];
-        if offset > 0 {
-            candidate_offsets.push(offset - 1);
-        }
+        let candidate_offsets = completion_candidate_offsets(&text, offset);
 
         for candidate in candidate_offsets {
             if let Some(node) = node_at_offset(&root_node, candidate) {
@@ -794,6 +791,46 @@ impl Backend {
         }
 
         None
+    }
+
+    pub(crate) fn get_completion_keywords(
+        &self,
+        uri: &Url,
+        position: Position,
+    ) -> Vec<&'static str> {
+        let uri_str = uri.to_string();
+        let doc = match self.documents.get(&uri_str) {
+            Some(doc) => doc,
+            None => return Vec::new(),
+        };
+        let offset = match doc.offset(position) {
+            Some(offset) => offset,
+            None => return Vec::new(),
+        };
+        let text = doc.text().to_string();
+        drop(doc);
+
+        let tree = {
+            let mut parser = self.parser.lock();
+            match parser.parse(text.as_str(), None) {
+                Some(tree) => tree,
+                None => return Vec::new(),
+            }
+        };
+
+        let root_node = tree.root_node();
+        let candidates = completion_candidate_offsets(&text, offset);
+
+        for candidate in candidates {
+            if let Some(node) = node_at_offset(&root_node, candidate) {
+                let keywords = completion_keywords_from_syntax(node, offset, &text);
+                if !keywords.is_empty() {
+                    return keywords;
+                }
+            }
+        }
+
+        Vec::new()
     }
 
     pub(crate) async fn check_diagnostics(&self, uri: &Url) {
@@ -2110,6 +2147,122 @@ fn node_at_offset<'tree>(root: &Node<'tree>, offset: usize) -> Option<Node<'tree
     }
 }
 
+fn ancestor_or_self_by_kind<'tree>(node: Node<'tree>, kind: &str) -> Option<Node<'tree>> {
+    let mut current = Some(node);
+    while let Some(candidate) = current {
+        if candidate.kind() == kind {
+            return Some(candidate);
+        }
+        current = candidate.parent();
+    }
+    None
+}
+
+fn inside_any_ancestor_kind(node: Node<'_>, kinds: &[&str]) -> bool {
+    kinds
+        .iter()
+        .any(|kind| ancestor_or_self_by_kind(node, kind).is_some())
+}
+
+fn completion_keywords_from_syntax<'tree>(
+    node: Node<'tree>,
+    offset: usize,
+    text: &str,
+) -> Vec<&'static str> {
+    let mut keywords = Vec::new();
+    let line_start = text[..offset].rfind('\n').map(|idx| idx + 1).unwrap_or(0);
+    let before = &text[line_start..offset];
+    let trimmed = before.trim();
+    let trimmed_start = before.trim_start();
+
+    if let Some(trigger) = ancestor_or_self_by_kind(node, "trigger_def") {
+        if let Some(when_cond) = named_child_by_kind(&trigger, "when_cond") {
+            if offset < when_cond.start_byte() {
+                keywords.push("note");
+            }
+        }
+    }
+
+    if inside_any_ancestor_kind(
+        node,
+        &[
+            "trigger_block",
+            "action_set_block",
+            "cond_body",
+            "schedule_block",
+        ],
+    ) {
+        if trimmed.is_empty() {
+            keywords.extend(["if", "do", "run"]);
+            if previous_significant_char(text, offset) == Some('}') {
+                keywords.push("else");
+            }
+        }
+
+        if let Some(after_do) = trimmed_start.strip_prefix("do") {
+            let after_do = after_do.trim_start();
+            if after_do.is_empty() || "priority".starts_with(after_do) {
+                keywords.push("priority");
+            }
+        }
+
+        if trimmed_start.starts_with("do schedule ") && trimmed_start.contains(" if ") {
+            if !contains_keyword(trimmed_start, "onFalse") {
+                keywords.push("onFalse");
+            }
+            if !contains_keyword(trimmed_start, "note") {
+                keywords.push("note");
+            }
+        }
+    }
+
+    if trimmed.is_empty() {
+        match previous_significant_char(text, offset) {
+            Some('{') => keywords.extend(["if", "do", "run"]),
+            Some('}') => keywords.extend(["if", "do", "run", "else"]),
+            _ => {}
+        }
+    }
+
+    if trimmed_start.starts_with("do schedule ") && trimmed_start.contains(" if ") {
+        if !contains_keyword(trimmed_start, "onFalse") {
+            keywords.push("onFalse");
+        }
+        if !contains_keyword(trimmed_start, "note") {
+            keywords.push("note");
+        }
+    }
+
+    keywords.sort_unstable();
+    keywords.dedup();
+    keywords
+}
+
+fn contains_keyword(text: &str, keyword: &str) -> bool {
+    text.split_whitespace().any(|part| part == keyword)
+}
+
+fn previous_significant_char(text: &str, offset: usize) -> Option<char> {
+    text[..offset].chars().rev().find(|ch| !ch.is_whitespace())
+}
+
+fn completion_candidate_offsets(text: &str, offset: usize) -> Vec<usize> {
+    let mut candidates = vec![offset];
+    if offset > 0 {
+        candidates.push(offset - 1);
+    }
+    if let Some(previous) = text[..offset]
+        .char_indices()
+        .rev()
+        .find_map(|(idx, ch)| (!ch.is_whitespace()).then_some(idx))
+    {
+        candidates.push(previous);
+    }
+    candidates.sort_unstable();
+    candidates.dedup();
+    candidates
+}
+
 fn field_name_for_child<'tree>(parent: &Node<'tree>, child: &Node<'tree>) -> Option<&'static str> {
     for i in 0..parent.child_count() {
         if let Some(candidate) = parent.child(i) {
@@ -2291,10 +2444,7 @@ mod tests {
             .offset(position)
             .expect("offset");
 
-        let mut candidates = vec![offset];
-        if offset > 0 {
-            candidates.push(offset - 1);
-        }
+        let candidates = completion_candidate_offsets(source, offset);
 
         for candidate in candidates {
             if let Some(node) = node_at_offset(&root, candidate) {
@@ -2307,6 +2457,27 @@ mod tests {
         None
     }
 
+    fn completion_keywords_at(source: &str, position: Position) -> Vec<&'static str> {
+        let tree = parse_source(source);
+        let root = tree.root_node();
+        let offset = Document::new(source.to_string())
+            .offset(position)
+            .expect("offset");
+
+        let candidates = completion_candidate_offsets(source, offset);
+
+        for candidate in candidates {
+            if let Some(node) = node_at_offset(&root, candidate) {
+                let keywords = completion_keywords_from_syntax(node, offset, source);
+                if !keywords.is_empty() {
+                    return keywords;
+                }
+            }
+        }
+
+        Vec::new()
+    }
+
     fn position_for_token(source: &str, line: usize, token: &str, offset: usize) -> Position {
         let line_str = source.lines().nth(line).expect("line missing");
         let start = line_str.find(token).expect("token missing on line");
@@ -2315,6 +2486,14 @@ mod tests {
         Position {
             line: line as u32,
             character,
+        }
+    }
+
+    fn end_of_line_position(source: &str, line: usize) -> Position {
+        let line_str = source.lines().nth(line).expect("line missing");
+        Position {
+            line: line as u32,
+            character: line_str.chars().map(|ch| ch.len_utf16() as u32).sum(),
         }
     }
 
@@ -2380,6 +2559,56 @@ mod tests {
         };
         let symbol = completion_at(source, position);
         assert_eq!(symbol, None);
+    }
+
+    #[test]
+    fn suggests_trigger_header_keywords_before_when() {
+        let source = "trigger \"Example\" only once \nwhen always {\n    do show \"\"\n}\n";
+        let keywords = completion_keywords_at(
+            source,
+            Position {
+                line: 0,
+                character: 28,
+            },
+        );
+        assert!(keywords.contains(&"note"));
+    }
+
+    #[test]
+    fn suggests_action_block_keywords_on_blank_lines() {
+        let source = "trigger \"Example\" when always {\n    \n}\n";
+        let keywords = completion_keywords_at(
+            source,
+            Position {
+                line: 1,
+                character: 4,
+            },
+        );
+        assert!(keywords.contains(&"if"));
+        assert!(keywords.contains(&"do"));
+        assert!(keywords.contains(&"run"));
+    }
+
+    #[test]
+    fn suggests_else_after_conditional_block() {
+        let source = "trigger \"Example\" when always {\n    if has flag ready {\n        do show \"\"\n    }\n    \n}\n";
+        let keywords = completion_keywords_at(
+            source,
+            Position {
+                line: 4,
+                character: 4,
+            },
+        );
+        assert!(keywords.contains(&"else"));
+    }
+
+    #[test]
+    fn suggests_schedule_followup_keywords() {
+        let source =
+            "trigger \"Example\" when always {\n    do schedule in 3 if has flag ready \n}\n";
+        let keywords = completion_keywords_at(source, end_of_line_position(source, 1));
+        assert!(keywords.contains(&"onFalse"));
+        assert!(keywords.contains(&"note"));
     }
 
     #[test]
